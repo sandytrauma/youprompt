@@ -1,10 +1,15 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { Sparkles, ArrowRight, Code2, Zap, Layers, ChevronRight, ShieldAlert, BrainCircuit, Activity } from "lucide-react";
+import DemoModal from "./components/ViewDemo";
+
 
 export default function LandingPage() {
+  const [isDemoOpen, setIsDemoOpen] = useState(false);
+
   const containerVariants = {
     hidden: { opacity: 0 },
     visible: {
@@ -76,13 +81,16 @@ export default function LandingPage() {
                 Start Vibe Coding <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
               </button>
             </Link>
-            <button className="w-full sm:w-auto px-10 py-4 md:py-5 bg-transparent border border-white/10 hover:bg-white/5 rounded-full font-semibold transition-all flex items-center justify-center gap-2 group">
+            <button 
+              onClick={() => setIsDemoOpen(true)}
+              className="w-full sm:w-auto px-10 py-4 md:py-5 bg-transparent border border-white/10 hover:bg-white/5 rounded-full font-semibold transition-all flex items-center justify-center gap-2 group"
+            >
               View Demo <ChevronRight size={18} className="opacity-50 group-hover:opacity-100 transition-opacity" />
             </button>
           </div>
         </motion.div>
 
-        {/* Major Marketing Section: Emergent Risk Analysis */}
+        {/* Marketing Section: Emergent Risk Analysis */}
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           whileInView={{ opacity: 1, scale: 1 }}
@@ -118,7 +126,6 @@ export default function LandingPage() {
                 </ul>
               </div>
               <div className="relative order-1 lg:order-2">
-                 {/* Mock Risk Analysis UI Element */}
                 <div className="bg-black/50 border border-white/5 rounded-xl md:rounded-2xl p-4 md:p-6 backdrop-blur-xl shadow-2xl lg:rotate-2 group-hover:rotate-0 transition-transform duration-500">
                   <div className="flex items-center justify-between mb-4">
                     <div className="flex gap-1.5">
@@ -145,7 +152,6 @@ export default function LandingPage() {
                     </div>
                   </div>
                 </div>
-                {/* Background Glow */}
                 <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-48 md:w-64 h-48 md:h-64 bg-red-600/20 blur-[60px] md:blur-[80px] -z-10" />
               </div>
             </div>
@@ -192,6 +198,9 @@ export default function LandingPage() {
         </div>
         <p className="text-center md:text-right">© 2026 YouPrompt AI. All rights reserved.</p>
       </footer>
+
+      {/* Separated Demo Modal Component */}
+      <DemoModal isOpen={isDemoOpen} onClose={() => setIsDemoOpen(false)} />
     </div>
   );
 }
