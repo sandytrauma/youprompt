@@ -32,25 +32,25 @@ export default async function AdminDashboard() {
       <div className="max-w-7xl mx-auto">
         
         {/* Navigation & Header */}
-        <header className="mb-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <header className="mb-8 md:mb-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div>
             <div className="flex items-center gap-2 text-blue-500 font-bold uppercase text-[10px] tracking-[0.2em] mb-2">
               <ShieldCheck size={14} /> Admin Privileges Active
             </div>
-            <h1 className="text-3xl font-bold tracking-tight">System Console</h1>
+            <h1 className="text-2xl md:text-3xl font-bold tracking-tight">System Console</h1>
             <p className="text-gray-400 text-sm mt-1">Global monitoring and user management for YouPrompt.</p>
           </div>
           
           <Link 
             href="/playground" 
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition-all text-sm font-medium w-fit"
+            className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition-all text-sm font-medium w-full md:w-fit"
           >
             <ArrowLeft size={16} /> Back to Playground
           </Link>
         </header>
 
         {/* Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 md:gap-6 mb-10">
           <StatCard 
             icon={<Users className="text-blue-500" />} 
             label="Total Registered Users" 
@@ -67,7 +67,7 @@ export default async function AdminDashboard() {
             icon={<Activity className="text-green-500" />} 
             label="API Gateway" 
             value="Healthy" 
-            description="Gemini-2.5-Flash status"
+            description="Gemini-3-Flash status"
           />
         </div>
 
@@ -76,34 +76,36 @@ export default async function AdminDashboard() {
           <div className="lg:col-span-2 bg-[#161617] rounded-3xl border border-white/5 overflow-hidden flex flex-col">
             <div className="p-6 border-b border-white/5 flex items-center justify-between">
               <h2 className="text-lg font-semibold">User Registry</h2>
-              <span className="text-[10px] bg-white/5 px-2 py-1 rounded text-gray-400 font-mono">
+              <span className="text-[10px] bg-white/5 px-2 py-1 rounded text-gray-400 font-mono shrink-0">
                 {allUsers.length} ENTRIES
               </span>
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left">
+            
+            {/* Scrollable Container for Table on Mobile */}
+            <div className="overflow-x-auto custom-scrollbar">
+              <table className="w-full text-left min-w-[500px]">
                 <thead className="bg-white/[0.02] text-gray-500 text-[10px] uppercase tracking-widest">
                   <tr>
-                    <th className="p-4 font-bold">Identity</th>
-                    <th className="p-4 font-bold">Role</th>
-                    <th className="p-4 font-bold text-right">Join Date</th>
+                    <th className="p-4 md:p-6 font-bold">Identity</th>
+                    <th className="p-4 md:p-6 font-bold">Role</th>
+                    <th className="p-4 md:p-6 font-bold text-right">Join Date</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/5">
                   {allUsers.map((user) => (
                     <tr key={user.id} className="hover:bg-white/[0.01] transition-colors group">
-                      <td className="p-4">
-                        <div className="font-medium text-sm">{user.name}</div>
-                        <div className="text-xs text-gray-500">{user.email}</div>
+                      <td className="p-4 md:p-6">
+                        <div className="font-medium text-sm truncate max-w-[150px] md:max-w-none">{user.name}</div>
+                        <div className="text-xs text-gray-500 truncate max-w-[150px] md:max-w-none">{user.email}</div>
                       </td>
-                      <td className="p-4">
+                      <td className="p-4 md:p-6">
                         <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-tighter ${
                           user.role === 'admin' ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20' : 'bg-gray-500/10 text-gray-400'
                         }`}>
                           {user.role}
                         </span>
                       </td>
-                      <td className="p-4 text-gray-500 text-xs text-right font-mono">
+                      <td className="p-4 md:p-6 text-gray-500 text-xs text-right font-mono">
                         {new Date(user.createdAt!).toLocaleDateString('en-GB')}
                       </td>
                     </tr>
@@ -129,12 +131,12 @@ export default async function AdminDashboard() {
                   <div className="text-sm font-medium truncate mb-1">
                     {task.inquiry?.title || "Unknown Vibe"}
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <span className="text-[9px] px-1.5 py-0.5 bg-white/5 rounded text-gray-400">
                       {task.versionName}
                     </span>
-                    <span className="text-[9px] text-gray-600">
-                      Updated by ID: {task.inquiry?.userId?.substring(0, 8)}...
+                    <span className="text-[9px] text-gray-600 truncate max-w-[120px]">
+                      By ID: {task.inquiry?.userId?.substring(0, 8)}...
                     </span>
                   </div>
                 </div>
@@ -163,7 +165,7 @@ function StatCard({ icon, label, value, description }: {
         <div className="text-[10px] font-bold text-gray-600 uppercase tracking-widest">Live</div>
       </div>
       <div className="text-gray-400 text-xs mb-1 font-medium">{label}</div>
-      <div className="text-3xl font-bold mb-1 tracking-tight">{value}</div>
+      <div className="text-2xl md:text-3xl font-bold mb-1 tracking-tight">{value}</div>
       <div className="text-[10px] text-gray-600 font-medium">{description}</div>
     </div>
   );

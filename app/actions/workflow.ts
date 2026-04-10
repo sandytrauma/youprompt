@@ -14,7 +14,7 @@ type ActionResponse = {
   inquiryId?: string;
   version?: number;
   error?: string;
-  emergentContent?: string; // Correctly included in the type
+  emergentContent?: string;
 };
 
 /**
@@ -45,6 +45,7 @@ export async function getAllUserInquiries() {
 
 /**
  * 2. Generate a brand new Vibe (Inquiry + Task V1).
+ * Refactored to remove db.transaction for Neon HTTP compatibility.
  */
 export async function createNewVibe(prompt: string): Promise<ActionResponse> {
   const session = await getServerSession(authOptions);
@@ -55,40 +56,35 @@ export async function createNewVibe(prompt: string): Promise<ActionResponse> {
 
   try {
     // 1. AI Generation 
-    // Note: Ensure your generateVibeWorkflow returns { steps, emergentContent }
     const aiResponse = await generateVibeWorkflow(prompt);
 
-    // 2. Database Transaction
-    const result = await db.transaction(async (tx) => {
-      // Create the Inquiry
-      const [newInquiry] = await tx.insert(inquiries).values({
-        userId: session.user.id,
-        title: prompt.substring(0, 50) || "New Vibe",
-      }).returning();
+    // 2. Create the Inquiry (Parent)
+    const [newInquiry] = await db.insert(inquiries).values({
+      userId: session.user.id,
+      title: prompt.substring(0, 50) || "New Vibe",
+    }).returning();
 
-      // Create the first Task (V1)
-      await tx.insert(tasks).values({
-        inquiryId: newInquiry.id,
-        versionName: "V1: Initial Vibe",
-        steps: aiResponse.steps, // Extracting steps from AI response
-        emergentContent: aiResponse.emergentContent, // Saving emergent analysis
-        version: 1,
-      });
+    if (!newInquiry) {
+      throw new Error("Failed to create inquiry record.");
+    }
 
-      return {
-        id: newInquiry.id,
-        steps: aiResponse.steps,
-        emergent: aiResponse.emergentContent
-      };
+    // 3. Create the first Task (Child V1)
+    // We execute this sequentially since transactions aren't supported in neon-http
+    await db.insert(tasks).values({
+      inquiryId: newInquiry.id,
+      versionName: "V1: Initial Vibe",
+      steps: aiResponse.steps, 
+      emergentContent: aiResponse.emergentContent, 
+      version: 1,
     });
 
     revalidatePath("/playground");
     
     return { 
       success: true, 
-      steps: result.steps, 
-      emergentContent: result.emergent,
-      inquiryId: result.id 
+      steps: aiResponse.steps, 
+      emergentContent: aiResponse.emergentContent,
+      inquiryId: newInquiry.id 
     };
   } catch (error) {
     console.error("Vibe Generation Error:", error);
@@ -108,7 +104,6 @@ export async function getVibeHistory(inquiryId: string) {
       orderBy: [desc(tasks.version)],
     });
     
-    // This returns the full task object, which includes 'emergentContent'
     return data || null;
   } catch (error) {
     console.error("Failed to fetch specific vibe history:", error);
@@ -139,7 +134,7 @@ export async function updateVibeVersion(
       inquiryId: id,
       versionName: `V${version + 1}: Edited Vibe`,
       steps: aiResponse.steps,
-      emergentContent: aiResponse.emergentContent, // Update the analysis for the new version
+      emergentContent: aiResponse.emergentContent, 
       version: version + 1,
     }).returning();
     

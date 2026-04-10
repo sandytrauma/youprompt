@@ -12,10 +12,11 @@ import {
 import { 
   Loader2, Send, Cpu, Layers, RotateCcw, 
   Globe, ExternalLink, LogOut, ShieldCheck, 
-  User, ChevronRight, Sparkles, ToyBrick, Zap,
-  AlertCircle
+  ChevronRight, Sparkles, ToyBrick, Zap,
+  AlertCircle, Menu, X
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { RiskPopup } from "../components/RiskPopup";
 
 interface Step {
   objective: string;
@@ -30,6 +31,8 @@ export default function Playground() {
   // UI States
   const [activeTab, setActiveTab] = useState<"workflow" | "emergent">("workflow");
   const [mounted, setMounted] = useState(false);
+  const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState(false);
+  const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(false);
   
   // Data States
   const [steps, setSteps] = useState<Step[]>([]);
@@ -41,6 +44,8 @@ export default function Playground() {
   const [currentInquiryId, setCurrentInquiryId] = useState<string | null>(null);
   const [currentVersion, setCurrentVersion] = useState<number>(1);
   const [promptInput, setPromptInput] = useState("");
+
+  const [isRiskModalOpen, setIsRiskModalOpen] = useState(false);
 
   const isAdmin = session?.user?.role === "admin";
 
@@ -61,17 +66,26 @@ export default function Playground() {
     if (status === "authenticated" && mounted) loadHistory();
   }, [status, mounted]);
 
+  useEffect(() => {
+    if (isRiskModalOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+  }, [isRiskModalOpen]);
+
   // 2. Handle History Selection
   async function handleSelectHistory(id: string) {
     if (isLoading) return;
     setSelectedStep(null);
     setIsLoading(true);
+    setIsLeftSidebarOpen(false); // Close drawer on mobile
 
     try {
       const result = await getVibeHistory(id);
       if (result) {
         setSteps(result.steps as Step[]);
-        setEmergentContent(result.emergentContent || ""); // Assuming action returns this
+        setEmergentContent(result.emergentContent || "");
         setCurrentInquiryId(id);
         setCurrentVersion(result.version ?? 1);
         setPromptInput("");
@@ -98,13 +112,21 @@ export default function Playground() {
         setSteps(result.steps as Step[]);
         setEmergentContent(result.emergentContent || "");
         setCurrentVersion(result.version ?? (currentInquiryId ? currentVersion + 1 : 1));
+        
         if (!currentInquiryId) {
           setCurrentInquiryId(result.inquiryId ?? null);
           const updatedHistory = await getAllUserInquiries();
           setHistory(updatedHistory);
         }
+        
         setPromptInput("");
         setSelectedStep(0);
+
+        if (result.emergentContent) {
+          setTimeout(() => {
+            setIsRiskModalOpen(true);
+          }, 500);
+        }
       }
     } catch (error) {
       console.error("Submission failed", error);
@@ -129,13 +151,33 @@ export default function Playground() {
   ];
 
   return (
-    <div className="flex h-screen bg-[#0a0a0a] text-white overflow-hidden font-[family-name:var(--font-geist-sans)]">
+    <div className="flex h-screen bg-[#0a0a0a] text-white overflow-hidden font-[family-name:var(--font-geist-sans)] relative">
       
-      {/* LEFT SIDEBAR */}
-      <aside className="w-64 bg-[#111111] border-r border-white/5 flex flex-col p-4 shrink-0">
-        <div className="flex items-center gap-2 mb-8 px-2 font-bold text-lg">
-          <div className="bg-blue-600 p-1 rounded-md"><Cpu size={16}/></div>
-          YouPrompt
+      {/* MOBILE HEADER */}
+      <header className="md:hidden fixed top-0 left-0 right-0 h-16 bg-[#111111]/80 backdrop-blur-md border-b border-white/5 flex items-center justify-between px-4 z-[50]">
+        <button onClick={() => setIsLeftSidebarOpen(true)} className="p-2 hover:bg-white/5 rounded-lg text-gray-400">
+          <Menu size={20} />
+        </button>
+        <div className="flex items-center gap-2 font-bold text-sm uppercase tracking-widest">
+          <Cpu size={16} className="text-blue-500"/> YouPrompt
+        </div>
+        <button onClick={() => setIsRightSidebarOpen(true)} className="p-2 hover:bg-white/5 rounded-lg text-blue-400">
+          <Zap size={20} />
+        </button>
+      </header>
+
+      {/* LEFT SIDEBAR (Desktop + Mobile Drawer) */}
+      <aside className={`
+        fixed inset-y-0 left-0 z-[100] w-72 bg-[#111111] border-r border-white/5 flex flex-col p-4 transition-transform duration-300 transform
+        ${isLeftSidebarOpen ? "translate-x-0" : "-translate-x-full"}
+        md:relative md:translate-x-0 md:flex md:w-64 md:shrink-0
+      `}>
+        <div className="flex items-center justify-between mb-8 px-2">
+          <div className="flex items-center gap-2 font-bold text-lg">
+            <div className="bg-blue-600 p-1 rounded-md"><Cpu size={16}/></div>
+            YouPrompt
+          </div>
+          <button onClick={() => setIsLeftSidebarOpen(false)} className="md:hidden p-2 text-gray-500"><X size={20}/></button>
         </div>
         
         {isAdmin && (
@@ -150,7 +192,7 @@ export default function Playground() {
         )}
 
         <button 
-          onClick={() => { setCurrentInquiryId(null); setSteps([]); setEmergentContent(""); setPromptInput(""); setSelectedStep(null); }}
+          onClick={() => { setCurrentInquiryId(null); setSteps([]); setEmergentContent(""); setPromptInput(""); setSelectedStep(null); setIsLeftSidebarOpen(false); }}
           className="mb-6 flex items-center justify-center gap-2 w-full p-3 rounded-xl bg-white text-black font-semibold text-sm hover:scale-[1.02] active:scale-95 transition-all shadow-lg"
         >
           <Layers size={16} /> New Vibe
@@ -175,7 +217,7 @@ export default function Playground() {
 
         <div className="mt-auto pt-4 border-t border-white/5">
           <div className="flex items-center gap-3 px-2 mb-4">
-            <div className="h-8 w-8 rounded-full bg-gradient-to-tr from-blue-600 to-purple-600 flex items-center justify-center text-[10px] font-bold">
+            <div className="h-8 w-8 rounded-full bg-gradient-to-tr from-blue-600 to-purple-600 flex items-center justify-center text-[10px] font-bold shrink-0">
               {session?.user?.name?.[0] || "U"}
             </div>
             <div className="flex-1 min-w-0">
@@ -190,55 +232,67 @@ export default function Playground() {
       </aside>
 
       {/* CENTER: Main Canvas */}
-      <main className="flex-1 flex flex-col items-center relative overflow-hidden bg-[#0d0d0d]">
-        <div className="w-full max-w-2xl flex-1 overflow-y-auto py-12 px-6 pb-32 space-y-8 custom-scrollbar">
+      <main className="flex-1 flex flex-col items-center relative overflow-hidden bg-[#0d0d0d] pt-16 md:pt-0">
+        <div className="w-full max-w-2xl flex-1 overflow-y-auto py-8 md:py-12 px-4 md:px-6 pb-32 space-y-8 custom-scrollbar">
           <AnimatePresence mode="wait">
             {steps.length > 0 ? (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-8">
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6 md:space-y-8">
                 {steps.map((step, i) => (
                   <motion.div 
                     key={i}
-                    onClick={() => setSelectedStep(i)}
-                    className={`p-6 rounded-3xl border transition-all cursor-pointer ${
+                    onClick={() => { setSelectedStep(i); if(window.innerWidth < 768) setIsRightSidebarOpen(true); }}
+                    className={`p-5 md:p-6 rounded-3xl border transition-all cursor-pointer ${
                       selectedStep === i ? "bg-[#161617] border-blue-500/50" : "bg-transparent border-white/5 hover:border-white/20"
                     }`}
                   >
-                    <span className="text-[10px] font-black text-blue-500 bg-blue-500/10 px-2 py-0.5 rounded-full">Step {i + 1}</span>
-                    <h3 className="text-xl font-medium mt-3 mb-4">{step.objective}</h3>
-                    <div className="bg-black/40 p-4 rounded-xl font-mono text-xs text-gray-400 border border-white/5 break-words">
+                    <div className="flex items-center justify-between mb-3">
+                        <span className="text-[10px] font-black text-blue-500 bg-blue-500/10 px-2 py-0.5 rounded-full uppercase">Step {i + 1}</span>
+                        {selectedStep === i && <ChevronRight size={14} className="text-blue-500 md:hidden"/>}
+                    </div>
+                    <h3 className="text-lg md:text-xl font-medium mb-4">{step.objective}</h3>
+                    <div className="bg-black/40 p-4 rounded-xl font-mono text-[11px] text-gray-400 border border-white/5 break-words">
                       {step.precisePrompt}
                     </div>
                   </motion.div>
                 ))}
               </motion.div>
             ) : (
-              <div className="h-full flex flex-col items-center justify-center text-center opacity-20 mt-20">
+              <div className="h-full flex flex-col items-center justify-center text-center opacity-20 mt-12 md:mt-20">
                 <Layers size={64} className="mb-6" />
-                <p className="text-2xl italic font-light tracking-tight">The canvas is empty.<br/>Describe your vibe below.</p>
+                <p className="text-xl md:text-2xl italic font-light tracking-tight px-4">The canvas is empty.<br/>Describe your vibe below.</p>
               </div>
             )}
           </AnimatePresence>
         </div>
 
-        {/* Floating Input */}
-        <div className="w-full max-w-2xl absolute bottom-8 px-6">
+        {/* Floating Input Area */}
+        <div className="w-full max-w-2xl absolute bottom-6 md:bottom-8 px-4 md:px-6 z-[40]">
           <form onSubmit={handleSubmit} className="relative group">
             <input 
               value={promptInput}
               onChange={(e) => setPromptInput(e.target.value)}
-              placeholder={currentInquiryId ? "Suggest changes to this version..." : "E.g., 'A modern bus tracking dashboard'"}
-              className="w-full bg-[#161617] rounded-full py-5 px-8 pr-16 outline-none border border-white/10 focus:border-blue-500/50 transition-all shadow-2xl text-sm"
+              placeholder={currentInquiryId ? "Suggest changes..." : "Describe your vibe..."}
+              className="w-full bg-[#161617] rounded-full py-4 md:py-5 px-6 md:px-8 pr-14 md:pr-16 outline-none border border-white/10 focus:border-blue-500/50 transition-all shadow-2xl text-sm"
               disabled={isLoading}
             />
-            <button type="submit" disabled={isLoading || !promptInput.trim()} className="absolute right-3 top-1/2 -translate-y-1/2 p-3 bg-white text-black rounded-full hover:scale-105 transition-all">
-              {isLoading ? <Loader2 className="animate-spin" size={20} /> : currentInquiryId ? <RotateCcw size={20} /> : <Send size={20} />}
+            <button type="submit" disabled={isLoading || !promptInput.trim()} className="absolute right-2 md:right-3 top-1/2 -translate-y-1/2 p-2.5 md:p-3 bg-white text-black rounded-full hover:scale-105 transition-all">
+              {isLoading ? <Loader2 className="animate-spin" size={18} /> : currentInquiryId ? <RotateCcw size={18} /> : <Send size={18} />}
             </button>
           </form>
         </div>
       </main>
 
-      {/* RIGHT SIDEBAR: Builder Hub + Emergent AI */}
-      <aside className="w-80 bg-[#111111] border-l border-white/5 flex flex-col shrink-0">
+      {/* RIGHT SIDEBAR (Desktop + Mobile Drawer) */}
+      <aside className={`
+        fixed inset-y-0 right-0 z-[100] w-80 bg-[#111111] border-l border-white/5 flex flex-col transition-transform duration-300 transform
+        ${isRightSidebarOpen ? "translate-x-0" : "translate-x-full"}
+        md:relative md:translate-x-0 md:flex md:w-80 md:shrink-0
+      `}>
+        <div className="flex items-center justify-between p-4 md:hidden border-b border-white/5">
+           <h2 className="text-xs font-bold uppercase tracking-widest text-gray-400">Builder Hub</h2>
+           <button onClick={() => setIsRightSidebarOpen(false)} className="p-2 text-gray-500"><X size={20}/></button>
+        </div>
+
         {/* Tabs Header */}
         <div className="flex p-2 gap-2 bg-black/20 border-b border-white/5">
           <button 
@@ -255,16 +309,16 @@ export default function Playground() {
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-6">
+        <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
           <AnimatePresence mode="wait">
             {activeTab === "workflow" ? (
               <motion.div key="workflow" initial={{ opacity: 0, x: 5 }} animate={{ opacity: 1, x: 0 }} className="space-y-6">
-                <h2 className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Builder Tools</h2>
+                <h2 className="hidden md:block text-[10px] font-bold text-gray-500 uppercase tracking-widest">Builder Tools</h2>
                 {selectedStep !== null ? (
                   <div className="space-y-4">
                     <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/5">
                       <p className="text-xs text-gray-400 leading-relaxed italic">
-                        Step {selectedStep + 1} is ready. Copy the prompt from the center and launch a platform:
+                        Step {selectedStep + 1} is ready. Launch a platform to begin:
                       </p>
                     </div>
                     {platforms.map((p) => (
@@ -290,14 +344,14 @@ export default function Playground() {
                   <div className="absolute top-0 right-0 p-4 opacity-10"><Zap size={40} className="text-blue-500" /></div>
                   <h3 className="text-blue-400 font-bold text-[10px] uppercase tracking-widest mb-3">Neural Analysis</h3>
                   <p className="text-gray-300 text-sm leading-relaxed">
-                    {emergentContent || "Awaiting valid input to generate cross-step intelligence and architectural risks."}
+                    {emergentContent || "Awaiting input to generate intelligence."}
                   </p>
                 </div>
                 
                 <div className="space-y-3">
                   <h4 className="text-[10px] font-bold text-gray-600 uppercase tracking-widest">Heuristic Insights</h4>
                   <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/5 text-[11px] text-gray-500 leading-relaxed">
-                    Emergent AI monitors your version history (V{currentVersion}) to suggest optimizations that aren't explicitly requested in your prompt.
+                    Emergent AI monitors (V{currentVersion}) to suggest invisible optimizations.
                   </div>
                 </div>
               </motion.div>
@@ -305,6 +359,20 @@ export default function Playground() {
           </AnimatePresence>
         </div>
       </aside>
+
+      {/* Backdrop for Mobile Drawers */}
+      {(isLeftSidebarOpen || isRightSidebarOpen) && (
+        <div 
+          onClick={() => { setIsLeftSidebarOpen(false); setIsRightSidebarOpen(false); }}
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[90] md:hidden"
+        />
+      )}
+
+      <RiskPopup 
+        isOpen={isRiskModalOpen} 
+        onClose={() => setIsRiskModalOpen(false)} 
+        content={emergentContent} 
+      />
     </div>
   );
 }

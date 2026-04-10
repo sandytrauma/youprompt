@@ -32,3 +32,19 @@ input:-webkit-autofill:focus {
   -webkit-box-shadow: 0 0 0px 1000px #161617 inset;
   transition: background-color 5000s ease-in-out 0s;
 }
+
+
+/* Add to globals.css */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 5px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(239, 68, 68, 0.2);
+  border-radius: 10px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(239, 68, 68, 0.4);
+}
