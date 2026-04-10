@@ -13,7 +13,7 @@ import {
   Loader2, Send, Cpu, Layers, RotateCcw, 
   Globe, ExternalLink, LogOut, ShieldCheck, 
   ChevronRight, Sparkles, ToyBrick, Zap,
-  AlertCircle, Menu, X
+  AlertCircle, Menu, X, Copy, Check
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { RiskPopup } from "../components/RiskPopup";
@@ -33,6 +33,7 @@ export default function Playground() {
   const [mounted, setMounted] = useState(false);
   const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState(false);
   const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
   
   // Data States
   const [steps, setSteps] = useState<Step[]>([]);
@@ -50,6 +51,19 @@ export default function Playground() {
   const isAdmin = session?.user?.role === "admin";
 
   useEffect(() => { setMounted(true); }, []);
+
+  // Compiled Prompt logic
+  const fullMasterPrompt = steps.length > 0 
+    ? `FULL ARCHITECTURE ROADMAP (v${currentVersion}):\n\n` + 
+      steps.map((s, i) => `STEP ${i + 1} - ${s.objective.toUpperCase()}:\n${s.precisePrompt}`).join("\n\n")
+    : "";
+
+  const handleCopyMasterPrompt = async () => {
+    if (!fullMasterPrompt) return;
+    await navigator.clipboard.writeText(fullMasterPrompt);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   // 1. Fetch History on Load
   useEffect(() => {
@@ -166,7 +180,7 @@ export default function Playground() {
         </button>
       </header>
 
-      {/* LEFT SIDEBAR (Desktop + Mobile Drawer) */}
+      {/* LEFT SIDEBAR */}
       <aside className={`
         fixed inset-y-0 left-0 z-[100] w-72 bg-[#111111] border-r border-white/5 flex flex-col p-4 transition-transform duration-300 transform
         ${isLeftSidebarOpen ? "translate-x-0" : "-translate-x-full"}
@@ -282,7 +296,7 @@ export default function Playground() {
         </div>
       </main>
 
-      {/* RIGHT SIDEBAR (Desktop + Mobile Drawer) */}
+      {/* RIGHT SIDEBAR */}
       <aside className={`
         fixed inset-y-0 right-0 z-[100] w-80 bg-[#111111] border-l border-white/5 flex flex-col transition-transform duration-300 transform
         ${isRightSidebarOpen ? "translate-x-0" : "translate-x-full"}
@@ -293,13 +307,36 @@ export default function Playground() {
            <button onClick={() => setIsRightSidebarOpen(false)} className="p-2 text-gray-500"><X size={20}/></button>
         </div>
 
+        {/* INTEGRATED MASTER PROMPT SECTION */}
+        <div className="p-4 border-b border-white/5 bg-white/[0.02]">
+           <div className="flex items-center justify-between mb-3 px-2">
+             <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Master Workflow</span>
+             {steps.length > 0 && (
+               <button 
+                onClick={handleCopyMasterPrompt}
+                className={`flex items-center gap-1.5 text-[10px] font-bold px-3 py-1 rounded-lg transition-all ${copied ? 'bg-green-600/20 text-green-400' : 'bg-blue-600 text-white hover:bg-blue-700'}`}
+               >
+                 {copied ? <Check size={10} /> : <Copy size={10} />}
+                 {copied ? "Copied" : "Copy Full Prompt"}
+               </button>
+             )}
+           </div>
+           <div className="bg-black/40 rounded-xl p-3 border border-white/5 h-24 overflow-y-auto custom-scrollbar">
+              <p className="text-[10px] font-mono text-gray-500 leading-relaxed italic">
+                {steps.length > 0 
+                  ? fullMasterPrompt.substring(0, 150) + "..."
+                  : "Start a vibe to compile your master prompt block here."}
+              </p>
+           </div>
+        </div>
+
         {/* Tabs Header */}
         <div className="flex p-2 gap-2 bg-black/20 border-b border-white/5">
           <button 
             onClick={() => setActiveTab("workflow")}
             className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all ${activeTab === 'workflow' ? 'bg-white/5 text-white shadow-inner border border-white/10' : 'text-gray-500 hover:text-gray-300'}`}
           >
-            <ToyBrick size={14} /> Workflow
+            <ToyBrick size={14} /> Tools
           </button>
           <button 
             onClick={() => setActiveTab("emergent")}
@@ -313,7 +350,7 @@ export default function Playground() {
           <AnimatePresence mode="wait">
             {activeTab === "workflow" ? (
               <motion.div key="workflow" initial={{ opacity: 0, x: 5 }} animate={{ opacity: 1, x: 0 }} className="space-y-6">
-                <h2 className="hidden md:block text-[10px] font-bold text-gray-500 uppercase tracking-widest">Builder Tools</h2>
+                <h2 className="hidden md:block text-[10px] font-bold text-gray-500 uppercase tracking-widest">Platform Integration</h2>
                 {selectedStep !== null ? (
                   <div className="space-y-4">
                     <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/5">
