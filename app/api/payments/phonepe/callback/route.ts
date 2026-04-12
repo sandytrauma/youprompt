@@ -17,43 +17,62 @@ export async function GET(req: Request) {
   const state = searchParams.get("state"); 
   const code = searchParams.get("code");
 
-  console.log("--- PROCESSING CALLBACK ---");
-  console.log("Received params:", { userId, planId, state, code });
+  // This log is vital for Vercel debugging
+  console.log("--- PHONEPE CALLBACK START ---");
+  console.log("Params:", { userId, planId, state, code });
 
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "https://youprompt.vercel.app";
 
   try {
-    /**
-     * 🔥 THE FIX: 
-     * In Sandbox, PhonePe sometimes omits the 'code' in the redirect.
-     * If we have a userId and planId, and no 'FAILURE' signal, we process the credits.
-     */
-    if (userId && planId) {
-      const creditsToAdd = creditMap[planId as keyof typeof creditMap] || 0;
-
-      if (creditsToAdd > 0) {
-        console.log(`Updating DB for ${userId}: +${creditsToAdd} credits`);
-
-        const result = await db.update(users)
-          .set({ 
-            credits: sql`COALESCE(${users.credits}, 0) + ${creditsToAdd}` 
-          })
-          .where(eq(users.id, userId))
-          .returning();
-
-        console.log("DB Update Success:", result);
-        
-        // Redirect to playground on success
-        return NextResponse.redirect(`${baseUrl}/playground?success=true`);
-      }
+    // 1. Validation: Ensure we have a userId and it's a valid UUID format
+    // If NextAuth is using UUIDs, the ID must be a valid 36-character string
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    
+    if (!userId || !uuidRegex.test(userId)) {
+      console.error("❌ Callback failed: Invalid or Missing UUID:", userId);
+      return NextResponse.redirect(`${baseUrl}/refill?error=invalid_user_context`);
     }
 
-    // If for some reason userId is missing
-    console.error("❌ Callback failed: No User ID found in URL");
-    return NextResponse.redirect(`${baseUrl}/refill?error=no_user_context`);
+    if (!planId || !creditMap[planId]) {
+      console.error("❌ Callback failed: Invalid Plan ID:", planId);
+      return NextResponse.redirect(`${baseUrl}/refill?error=invalid_plan`);
+    }
+
+    const creditsToAdd = creditMap[planId as keyof typeof creditMap];
+
+    // 2. Perform the update
+    console.log(`Attempting DB Update: User ${userId} | Adding ${creditsToAdd} credits`);
+
+    const result = await db.update(users)
+      .set({ 
+        // Using COALESCE handles cases where credits might be NULL in the DB
+        credits: sql`COALESCE(${users.credits}, 0) + ${creditsToAdd}` 
+      })
+      .where(eq(users.id, userId))
+      .returning({ updatedId: users.id });
+
+    // 3. Verification
+    if (result.length === 0) {
+      /**
+       * 🚨 IF YOU HIT THIS LOG:
+       * It means the userId exists in the URL but DOES NOT exist in the 
+       * 'users' table in your Production database.
+       */
+      console.error(`❌ DB Update Failed: No user found with ID ${userId}`);
+      return NextResponse.redirect(`${baseUrl}/refill?error=user_not_found_in_db`);
+    }
+
+    console.log("✅ DB Update Success. Record:", result[0]);
+    
+    // Final Success Redirect
+    return NextResponse.redirect(`${baseUrl}/playground?success=true`);
 
   } catch (error) {
-    console.error("🚨 DB/Callback Error:", error);
+    console.error("🚨 CRITICAL CALLBACK ERROR:", error);
+    // Log the full error to Vercel logs
+    if (error instanceof Error) {
+      console.error("Error Message:", error.message);
+    }
     return NextResponse.redirect(`${baseUrl}/refill?error=db_error`);
   }
 }
