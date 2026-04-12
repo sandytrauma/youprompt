@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { signOut, useSession } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { 
@@ -33,9 +33,11 @@ interface HistoryItem {
   version?: number;
   createdAt?: Date | null;
 }
+
 export const dynamic = "force-dynamic";
 
-export default function Playground() {
+// --- Main Logic Component ---
+function PlaygroundContent() {
   const { data: session, status, update } = useSession();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -422,11 +424,11 @@ export default function Playground() {
               )}
             </div>
             <div className="bg-black/40 rounded-xl p-3 border border-white/5 h-24 overflow-y-auto custom-scrollbar">
-               <p className="text-[10px] font-mono text-gray-500 leading-relaxed italic">
-                 {steps.length > 0 
-                   ? fullMasterPrompt.substring(0, 150) + "..."
-                   : "Generate a vibe to see the full architectural prompt block here."}
-               </p>
+                <p className="text-[10px] font-mono text-gray-500 leading-relaxed italic">
+                  {steps.length > 0 
+                    ? fullMasterPrompt.substring(0, 150) + "..."
+                    : "Generate a vibe to see the full architectural prompt block here."}
+                </p>
             </div>
         </div>
 
@@ -487,5 +489,18 @@ export default function Playground() {
       {/* Popups */}
       <RiskPopup isOpen={isRiskModalOpen} onClose={() => setIsRiskModalOpen(false)} content={emergentContent} />
     </div>
+  );
+}
+
+// --- Default Export with Suspense Boundary ---
+export default function Playground() {
+  return (
+    <Suspense fallback={
+      <div className="h-screen bg-[#0a0a0a] flex items-center justify-center">
+        <Loader2 className="animate-spin text-blue-500" size={32} />
+      </div>
+    }>
+      <PlaygroundContent />
+    </Suspense>
   );
 }
