@@ -1,11 +1,90 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { Sparkles, ArrowRight, Code2, Zap, Layers, ChevronRight, ShieldAlert, BrainCircuit, Activity } from "lucide-react";
 import DemoModal from "./components/ViewDemo";
 
+/**
+ * ScrambledRain Component
+ * Vertical shower where characters start blurred/faded at the top
+ * and sharpen as they reach the middle and bottom.
+ */
+function ScrambledRain() {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    let width = (canvas.width = window.innerWidth);
+    let height = (canvas.height = window.innerHeight);
+
+    const characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@#$%&*";
+    const fontSize = 14;
+    const columns = Math.floor(width / fontSize);
+    const drops: number[] = new Array(columns).fill(0);
+
+    const draw = () => {
+      // Create trailing effect
+      ctx.fillStyle = "rgba(10, 10, 10, 0.15)";
+      ctx.fillRect(0, 0, width, height);
+
+      for (let i = 0; i < drops.length; i++) {
+        const text = characters.charAt(Math.floor(Math.random() * characters.length));
+        const x = i * fontSize;
+        const y = drops[i] * fontSize;
+
+        // Calculate opacity based on vertical position
+        // Top (0) is faint/blurred, Middle/Bottom (height) is sharp/bright
+        const progress = y / height;
+        const opacity = Math.min(progress + 0.1, 0.4); // Max opacity 0.4 for background vibe
+        
+        ctx.fillStyle = `rgba(37, 99, 235, ${opacity})`;
+        ctx.font = `${fontSize}px monospace`;
+        
+        // Add a slight "glow" to the sharper bottom elements
+        if (progress > 0.5) {
+          ctx.shadowBlur = 5;
+          ctx.shadowColor = "rgba(37, 99, 235, 0.5)";
+        } else {
+          ctx.shadowBlur = 0;
+        }
+
+        ctx.fillText(text, x, y);
+
+        // Reset drop to top randomly
+        if (y > height && Math.random() > 0.975) {
+          drops[i] = 0;
+        }
+        drops[i]++;
+      }
+    };
+
+    const interval = setInterval(draw, 50);
+
+    const handleResize = () => {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+    };
+
+    window.addEventListener("resize", handleResize);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("resize", handleResize);
+    };
+  }, []);
+
+  return (
+    <canvas
+      ref={canvasRef}
+      className="fixed inset-0 pointer-events-none z-0"
+    />
+  );
+}
 
 export default function LandingPage() {
   const [isDemoOpen, setIsDemoOpen] = useState(false);
@@ -24,9 +103,13 @@ export default function LandingPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0a0a0a] text-white flex flex-col items-center overflow-x-hidden selection:bg-blue-500/30">
+    <div className="min-h-screen bg-[#0a0a0a] text-white flex flex-col items-center overflow-x-hidden selection:bg-blue-500/30 relative">
+      
+      {/* Scrambled Alphabet Shower */}
+      <ScrambledRain />
+
       {/* Dynamic Background Elements */}
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-[1400px] h-[800px] pointer-events-none">
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-[1400px] h-[800px] pointer-events-none z-1">
         <div className="absolute top-[-10%] left-1/2 -translate-x-1/2 w-[300px] sm:w-[1000px] h-[300px] sm:h-[600px] bg-blue-600/10 blur-[80px] sm:blur-[120px] rounded-full" />
         <div className="absolute top-0 left-0 right-0 bottom-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 mix-blend-overlay" />
         <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:40px_40px] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)]" />
@@ -187,7 +270,7 @@ export default function LandingPage() {
         </motion.div>
       </main>
 
-      <footer className="w-full max-w-7xl mt-auto py-8 md:py-12 px-6 border-t border-white/5 flex flex-col md:flex-row justify-between items-center gap-6 text-gray-500 text-xs md:text-sm">
+      <footer className="w-full max-w-7xl mt-auto py-8 md:py-12 px-6 border-t border-white/5 flex flex-col md:flex-row justify-between items-center gap-6 text-gray-500 text-xs md:text-sm relative z-10">
         <div className="flex items-center gap-2 font-bold text-white opacity-80">
           <Zap size={14} className="text-blue-500" /> YouPrompt
         </div>
