@@ -14,7 +14,7 @@ import {
   Globe, ExternalLink, LogOut, ShieldCheck, 
   ChevronRight, Sparkles, ToyBrick, Zap,
   AlertCircle, Menu, X, Copy, Check, PlusCircle,
-  UserCog 
+  Settings
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { RiskPopup } from "../components/RiskPopup";
@@ -187,6 +187,7 @@ export default function Playground() {
   }
 
   const platforms = [
+    { name: "Emergent", url: "https://app.emergent.sh/landing/", color: "text-cyan-400" },
     { name: "Gemini", url: "https://aistudio.google.com/", color: "text-blue-400" },
     { name: "v0.dev", url: "https://v0.dev/", color: "text-pink-400" },
     { name: "Bolt.new", url: "https://bolt.new/", color: "text-orange-400" },
@@ -196,6 +197,7 @@ export default function Playground() {
   return (
     <div className="flex h-screen bg-[#0a0a0a] text-white overflow-hidden font-[family-name:var(--font-geist-sans)] relative">
       
+      {/* Mobile Header */}
       <header className="md:hidden fixed top-0 left-0 right-0 h-16 bg-[#111111]/80 backdrop-blur-md border-b border-white/5 flex items-center justify-between px-4 z-[50]">
         <button onClick={() => setIsLeftSidebarOpen(true)} className="p-2 hover:bg-white/5 rounded-lg text-gray-400">
           <Menu size={20} />
@@ -208,19 +210,40 @@ export default function Playground() {
         </button>
       </header>
 
+      {/* Main Sidebar */}
       <aside className={`
         fixed inset-y-0 left-0 z-[100] w-72 bg-[#111111] border-r border-white/5 flex flex-col p-4 transition-transform duration-300 transform
         ${isLeftSidebarOpen ? "translate-x-0" : "-translate-x-full"}
         md:relative md:translate-x-0 md:flex md:w-64 md:shrink-0
       `}>
-        <div className="flex items-center justify-between mb-8 px-2">
-          <div className="flex items-center gap-2 font-bold text-lg">
-            <div className="bg-blue-600 p-1 rounded-md"><Cpu size={16}/></div>
-            YouPrompt
-          </div>
-          <button onClick={() => setIsLeftSidebarOpen(false)} className="md:hidden p-2 text-gray-500"><X size={20}/></button>
+        {/* Top Switcher / Brand Header */}
+        <div className="mb-8">
+          {isAdmin ? (
+            <div className="flex p-1 bg-black/40 rounded-xl border border-white/5">
+              <button 
+                onClick={() => router.push("/playground")}
+                className="flex-1 flex items-center justify-center gap-2 py-2 rounded-lg bg-blue-600 text-white text-[10px] font-black uppercase tracking-wider"
+              >
+                <Layers size={12} /> Playground
+              </button>
+              <button 
+                onClick={() => router.push("/admin")}
+                className="flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-gray-500 hover:text-white text-[10px] font-black uppercase tracking-wider transition-colors"
+              >
+                <ShieldCheck size={12} /> Admin
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 px-2">
+              <div className="bg-blue-600 p-1.5 rounded-lg">
+                <Cpu size={18} className="text-white" />
+              </div>
+              <span className="font-black text-lg tracking-tighter uppercase">YouPrompt</span>
+            </div>
+          )}
         </div>
     
+        {/* Credit Display */}
         <div className="mb-6 p-4 rounded-2xl bg-gradient-to-br from-blue-600/20 to-purple-600/10 border border-blue-500/20 shadow-inner">
           <div className="flex items-center justify-between mb-2">
             <span className="text-[10px] font-bold text-blue-400 uppercase tracking-widest">
@@ -248,25 +271,7 @@ export default function Playground() {
           </button>
         </div>
 
-        {/* Top Navigation */}
-        <div className="space-y-1 mb-6">
-          <button 
-            onClick={() => router.push("/playground")}
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl bg-blue-600/10 text-blue-400 border border-blue-500/20 text-[11px] font-bold uppercase tracking-wider transition-all"
-          >
-            <Layers size={14} /> Playground
-          </button>
-          
-          {isAdmin && (
-            <button 
-              onClick={() => router.push("/admin")}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-gray-500 hover:bg-white/5 hover:text-white text-[11px] font-bold uppercase tracking-wider transition-all group"
-            >
-              <ShieldCheck size={14} className="group-hover:text-red-400 transition-colors" /> Admin Console
-            </button>
-          )}
-        </div>
-
+        {/* Action Button */}
         <button 
           onClick={() => { setCurrentInquiryId(null); setSteps([]); setEmergentContent(""); setPromptInput(""); setSelectedStep(null); setIsLeftSidebarOpen(false); }}
           className="mb-6 flex items-center justify-center gap-2 w-full p-3 rounded-xl bg-white text-black font-bold text-sm hover:scale-[1.02] active:scale-95 transition-all shadow-lg"
@@ -274,6 +279,7 @@ export default function Playground() {
           <PlusCircle size={16} /> New Vibe
         </button>
 
+        {/* History List */}
         <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-widest px-2 mb-4">History</h2>
         <div className="flex-1 space-y-1 overflow-y-auto pr-2 custom-scrollbar">
           {history.length > 0 ? history.map((item) => (
@@ -293,12 +299,9 @@ export default function Playground() {
           )}
         </div>
 
-        {/* Footer User Section - Settings Integrated Here */}
+        {/* Footer Sidebar Section */}
         <div className="mt-auto pt-4 border-t border-white/5 space-y-2">
-          <Link 
-            href="/profile" 
-            className="flex items-center gap-3 px-2 py-3 rounded-xl hover:bg-white/5 transition-all group border border-transparent hover:border-white/10"
-          >
+          <div className="flex items-center gap-3 px-2 py-3">
             <div className="h-10 w-10 rounded-full bg-gradient-to-tr from-blue-600 to-purple-600 flex items-center justify-center text-[10px] font-bold shrink-0 overflow-hidden border border-white/10">
               {session?.user?.image ? (
                 <img src={session.user.image} alt="Avatar" className="w-full h-full object-cover" />
@@ -307,21 +310,29 @@ export default function Playground() {
               )}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-[11px] font-bold truncate group-hover:text-blue-400 transition-colors">{session?.user?.name}</p>
-              <div className="flex items-center gap-1">
-                 <UserCog size={10} className="text-gray-500 group-hover:text-purple-400 transition-colors" />
-                 <p className="text-[9px] text-gray-500 uppercase tracking-tighter truncate">Manage Profile</p>
-              </div>
+              <p className="text-[11px] font-bold truncate">{session?.user?.name}</p>
+              <p className="text-[9px] text-gray-500 uppercase tracking-tighter truncate">{session?.user?.email}</p>
             </div>
-            <ChevronRight size={12} className="text-gray-600 group-hover:text-white transition-all group-hover:translate-x-0.5" />
-          </Link>
+          </div>
           
-          <button onClick={() => signOut({ callbackUrl: "/login" })} className="flex items-center justify-between w-full p-3 rounded-xl bg-white/5 border border-white/5 text-gray-400 hover:text-red-400 transition-all text-xs font-medium group">
-            <div className="flex items-center gap-2"><LogOut size={14} className="group-hover:rotate-12 transition-transform" /> Sign Out</div>
-          </button>
+          <div className="grid grid-cols-2 gap-2">
+             <button 
+               onClick={() => router.push("/profile")} 
+               className="flex items-center justify-center gap-2 p-2.5 rounded-xl bg-white/5 border border-white/5 text-gray-400 hover:text-white hover:bg-white/10 transition-all text-[10px] font-bold uppercase tracking-widest"
+             >
+                <Settings size={14} /> Profile
+             </button>
+             <button 
+               onClick={() => signOut({ callbackUrl: "/login" })} 
+               className="flex items-center justify-center gap-2 p-2.5 rounded-xl bg-white/5 border border-white/5 text-gray-400 hover:text-red-400 transition-all text-[10px] font-bold uppercase tracking-widest"
+             >
+                <LogOut size={14} /> Out
+             </button>
+          </div>
         </div>
       </aside>
 
+      {/* Main Content Area */}
       <main className="flex-1 flex flex-col items-center relative overflow-hidden bg-[#0d0d0d] pt-16 md:pt-0">
         <div className="w-full max-w-2xl flex-1 overflow-y-auto py-8 md:py-12 px-4 md:px-6 pb-32 space-y-8 custom-scrollbar">
           <AnimatePresence mode="wait">
@@ -355,6 +366,7 @@ export default function Playground() {
           </AnimatePresence>
         </div>
 
+        {/* Prompt Input Box */}
         <div className="w-full max-w-2xl absolute bottom-6 md:bottom-8 px-4 md:px-6 z-[40]">
           <form onSubmit={handleSubmit} className="relative group">
             <input 
@@ -383,6 +395,7 @@ export default function Playground() {
         </div>
       </main>
 
+      {/* Right Sidebar - Builder Hub */}
       <aside className={`
         fixed inset-y-0 right-0 z-[100] w-80 bg-[#111111] border-l border-white/5 flex flex-col transition-transform duration-300 transform
         ${isRightSidebarOpen ? "translate-x-0" : "translate-x-full"}
@@ -393,6 +406,7 @@ export default function Playground() {
             <button onClick={() => setIsRightSidebarOpen(false)} className="p-2 text-gray-500"><X size={20}/></button>
         </div>
 
+        {/* Master Copy Block */}
         <div className="p-4 border-b border-white/5 bg-white/[0.02]">
             <div className="flex items-center justify-between mb-3 px-2">
               <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Master Workflow</span>
@@ -415,6 +429,7 @@ export default function Playground() {
             </div>
         </div>
 
+        {/* Hub Tabs */}
         <div className="flex p-2 gap-2 bg-black/20 border-b border-white/5">
           <button onClick={() => setActiveTab("workflow")} className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all ${activeTab === 'workflow' ? 'bg-white/5 text-white border border-white/10' : 'text-gray-500 hover:text-gray-300'}`}>
             <ToyBrick size={14} /> Tools
@@ -424,6 +439,7 @@ export default function Playground() {
           </button>
         </div>
 
+        {/* Tab Content */}
         <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
           <AnimatePresence mode="wait">
             {activeTab === "workflow" ? (
@@ -462,10 +478,12 @@ export default function Playground() {
         </div>
       </aside>
 
+      {/* Overlay for mobile */}
       {(isLeftSidebarOpen || isRightSidebarOpen) && (
         <div onClick={() => { setIsLeftSidebarOpen(false); setIsRightSidebarOpen(false); }} className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[90] md:hidden" />
       )}
 
+      {/* Popups */}
       <RiskPopup isOpen={isRiskModalOpen} onClose={() => setIsRiskModalOpen(false)} content={emergentContent} />
     </div>
   );

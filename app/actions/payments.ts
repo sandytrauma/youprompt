@@ -1,5 +1,9 @@
 "use server";
 
+import { db } from "@/db";
+import { transactions, users } from "@/db/schema";
+import { eq, sql } from "drizzle-orm";
+
 const BASE_URL = "https://api-preprod.phonepe.com/apis/pg-sandbox";
 
 /**
@@ -92,5 +96,31 @@ export async function initiatePhonePePayment(amount: number, userId: string, pla
   } catch (error: any) {
     console.error("🚨 CRITICAL ACTION ERROR:", error);
     return { error: "Internal server error." };
+  }
+}
+
+export async function confirmCreditPurchase(userId: string, amountPaid: number, creditsToGrant: number) {
+  try {
+    await db.transaction(async (tx) => {
+      // 1. Update User Table
+      await tx.update(users)
+        .set({ 
+          credits: sql`${users.credits} + ${creditsToGrant}` 
+        })
+        .where(eq(users.id, userId));
+
+      // 2. Log in Transactions Table
+      await tx.insert(transactions).values({
+        userId: userId,           // Ensure this matches the property name in your schema.ts
+        amount: amountPaid,
+        creditsAdded: creditsToGrant,
+        status: "COMPLETED",      // Changed to UPPERCASE as per your error message
+      });
+    });
+
+    return { success: true };
+  } catch (error) {
+    console.error("Transaction failed:", error);
+    return { success: false, error: "Database update failed" };
   }
 }

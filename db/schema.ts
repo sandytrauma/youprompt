@@ -35,7 +35,9 @@ export const tasks = pgTable("tasks", {
 });
 
 export const transactions = pgTable("transactions", {
-  id: text("id").primaryKey(), // Using PhonePe's Merchant Transaction ID
+ id: uuid("id")
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
   userId: uuid("user_id").references(() => users.id),
   amount: integer("amount").notNull(), // Amount in Paise
   creditsAdded: integer("credits_added").notNull(),
