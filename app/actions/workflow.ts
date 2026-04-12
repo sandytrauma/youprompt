@@ -124,17 +124,37 @@ export async function createNewVibe(prompt: string): Promise<ActionResponse> {
  * 3. Fetch the results for a specific history item from the DB.
  */
 export async function getVibeHistory(inquiryId: string) {
-  if (!inquiryId) return null;
+  const session = await getServerSession(authOptions);
+  
+  // Guard clause: ensure user is authenticated
+  if (!session?.user?.id) return null;
 
   try {
-    const data = await db.query.tasks.findFirst({
+    const result = await db.query.tasks.findFirst({
       where: eq(tasks.inquiryId, inquiryId),
       orderBy: [desc(tasks.version)],
+      with: {
+        inquiry: true, 
+      },
     });
-    
-    return data || null;
+
+    // Verify the record exists and belongs to the authenticated user
+    if (!result || result.inquiry?.userId !== session.user.id) {
+      return null;
+    }
+
+    // Return the result without referencing the non-existent isPublic column
+    return {
+      id: result.id,
+      steps: result.steps, // Your Step[] array from JSONB
+      emergentContent: result.emergentContent,
+      version: result.version,
+      createdAt: result.createdAt,
+      // We hardcode this to false for now since the DB column doesn't exist
+      isPublic: false, 
+    };
   } catch (error) {
-    console.error("Failed to fetch specific vibe history:", error);
+    console.error("Error in getVibeHistory:", error);
     return null;
   }
 }

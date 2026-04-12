@@ -1,5 +1,5 @@
 import { relations } from "drizzle-orm";
-import { pgTable, text, timestamp, uuid, jsonb, integer } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, uuid, jsonb, integer, primaryKey, boolean, json } from "drizzle-orm/pg-core";
 
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -16,9 +16,13 @@ lastMerchantTransactionId: text("last_merchant_transaction_id"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+
+
 export const inquiries = pgTable("inquiries", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }),
+  id: uuid("id").defaultRandom().primaryKey().notNull(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
   title: text("title").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
 });
@@ -45,7 +49,43 @@ export const transactions = pgTable("transactions", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const vibes = pgTable("vibes", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  // CHANGED text to uuid
+  creatorId: uuid("creator_id").references(() => users.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  prompt: text("prompt").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+  steps: json("steps"),
+});
 
+// 2. Comments Table
+export const comments = pgTable("comments", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  vibeId: uuid("vibe_id").references(() => vibes.id, { onDelete: "cascade" }),
+  // CHANGED text to uuid
+  userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }),
+  content: text("content").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// 3. Likes Table
+export const likes = pgTable("likes", {
+  // CHANGED text to uuid
+  userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }),
+  vibeId: uuid("vibe_id").references(() => vibes.id, { onDelete: "cascade" }),
+}, (t) => ({
+  pk: primaryKey({ columns: [t.userId, t.vibeId] }),
+}));
+
+// 4. Subscriptions
+export const subscriptions = pgTable("subscriptions", {
+  // CHANGED text to uuid
+  followerId: uuid("follower_id").references(() => users.id, { onDelete: "cascade" }),
+  followingId: uuid("following_id").references(() => users.id, { onDelete: "cascade" }),
+}, (t) => ({
+  pk: primaryKey({ columns: [t.followerId, t.followingId] }),
+}));
 
 
 export const inquiriesRelations = relations(inquiries, ({ one, many }) => ({
@@ -64,10 +104,64 @@ export const tasksRelations = relations(tasks, ({ one }) => ({
   }),
 }));
 
-// 3. Define Relations for Users
+
+// 1. Update Users Relations (Add social connections)
 export const usersRelations = relations(users, ({ many }) => ({
   inquiries: many(inquiries),
   transactions: many(transactions),
+  vibes: many(vibes),
+  comments: many(comments),
+  likes: many(likes),
+  followers: many(subscriptions, { relationName: "follower" }), 
+  following: many(subscriptions, { relationName: "following" }),
+}));
+
+// 2. Vibes Relations
+export const vibesRelations = relations(vibes, ({ one, many }) => ({
+  author: one(users, {
+    fields: [vibes.creatorId],
+    references: [users.id],
+  }),
+  comments: many(comments),
+  likes: many(likes),
+}));
+
+// 3. Comments Relations
+export const commentsRelations = relations(comments, ({ one }) => ({
+  vibe: one(vibes, {
+    fields: [comments.vibeId],
+    references: [vibes.id],
+  }),
+  author: one(users, {
+    fields: [comments.userId],
+    references: [users.id],
+  }),
+}));
+
+// 4. Likes Relations
+export const likesRelations = relations(likes, ({ one }) => ({
+  vibe: one(vibes, {
+    fields: [likes.vibeId],
+    references: [vibes.id],
+  }),
+  user: one(users, {
+    fields: [likes.userId],
+    references: [users.id],
+  }),
+}));
+
+// 5. Subscriptions (Followers/Following) Relations
+export const subscriptionsRelations = relations(subscriptions, ({ one }) => ({
+  follower: one(users, {
+    fields: [subscriptions.followerId],
+    references: [users.id],
+    relationName: "follower",
+  }),
+  following: one(users, {
+    fields: [subscriptions.followingId],
+    references: [users.id],
+    relationName: "following",
+  }),
 }));
 
 export const transactionsRelations = relations(transactions, ({ one }) => ({

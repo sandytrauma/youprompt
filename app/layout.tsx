@@ -45,7 +45,21 @@ export default function RootLayout({
     >
       <body className="bg-[#0a0a0a] text-white selection:bg-blue-500/30 min-h-screen">
         <Providers>
-          {children}
+          {/* We use a flex container here. 
+              The Playground has its own internal sidebar for History, 
+              but the global 'Explore' navigation should wrap the whole app.
+          */}
+          <div className="relative flex min-h-screen">
+            {/* If you want the Navigation to be truly global across all pages, 
+               you would place your <Navigation /> component here. 
+               Otherwise, leave {children} as the sole occupant if the 
+               Playground/Explore pages handle their own sidebars.
+            */}
+            <main className="flex-1 w-full">
+              {children}
+            </main>
+          </div>
+
           <Toaster 
             position="bottom-right"
             toastOptions={{

@@ -6,27 +6,39 @@ export default withAuth(
     const token = req.nextauth.token;
     const { pathname } = req.nextUrl;
 
-    // 1. Define Route Protections
     const isAdminRoute = pathname.startsWith("/admin");
+    const isPlaygroundRoute = pathname.startsWith("/playground");
+    const isProfileRoute = pathname.startsWith("/profile");
+    const isRefillRoute = pathname.startsWith("/refill");
 
-    // 2. Role-Based Access Control (RBAC)
-    // If accessing an admin route but the role is not admin, redirect to playground
+    // 1. Role-Based Access Control (RBAC)
     if (isAdminRoute && token?.role !== "admin") {
       return NextResponse.redirect(new URL("/playground", req.url));
     }
 
-    // 3. Fallthrough
+    // 2. Extra Security Layer
+    // Ensure that if a user is NOT logged in but somehow hits these routes, 
+    // they are sent to login (withAuth usually handles this, but this is a fail-safe).
+    if ((isPlaygroundRoute || isProfileRoute || isAdminRoute || isRefillRoute) && !token) {
+      return NextResponse.redirect(new URL("/login", req.url));
+    }
+
     return NextResponse.next();
   },
   {
     callbacks: {
-      /**
-       * Ensure authorized only checks for a token presence.
-       * withAuth handles the redirect to /login automatically if this returns false.
-       */
-      authorized: ({ token }) => !!token,
+      authorized: ({ token, req }) => {
+        const { pathname } = req.nextUrl;
+        
+        // Publicly accessible route
+        if (pathname.startsWith("/explore")) {
+          return true;
+        }
+        
+        // Require authentication for all other matched routes
+        return !!token;
+      },
     },
-    // Adding pages config here ensures middleware knows where to send unauthenticated users
     pages: {
       signIn: "/login",
     },
@@ -39,14 +51,13 @@ export default withAuth(
 export const config = {
   matcher: [
     /*
-     * Match all protected routes:
-     * - /playground and subpaths
-     * - /admin and subpaths
-     * * IMPORTANT: Ensure /api/auth is NOT matched. 
-     * Your current specific matching is good, but if you use a wider matcher, 
-     * use a negative lookahead to exclude NextAuth internals.
+     * Include /refill in the protected list so users 
+     * must be logged in to purchase credits.
      */
     "/playground/:path*", 
     "/admin/:path*",
+    "/profile/:path*",
+    "/explore/:path*",
+    "/refill/:path*",
   ],
 };
