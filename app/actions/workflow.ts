@@ -1,12 +1,15 @@
 "use server";
 
 import { db } from "@/db";
-import { inquiries, tasks } from "@/db/schema";
+import { inquiries, tasks, users } from "@/db/schema";
 import { generateVibeWorkflow } from "@/lib/gemini";
 import { authOptions } from "@/lib/auth";
 import { getServerSession } from "next-auth";
 import { revalidatePath } from "next/cache";
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
+
+// 1 Credit per generation/edit
+const VIBE_COST = 1;
 
 type ActionResponse = {
   success: boolean;
@@ -45,31 +48,43 @@ export async function getAllUserInquiries() {
 
 /**
  * 2. Generate a brand new Vibe (Inquiry + Task V1).
- * Refactored to remove db.transaction for Neon HTTP compatibility.
+ * Production Ready: Includes Credit Checks & Deductions
  */
 export async function createNewVibe(prompt: string): Promise<ActionResponse> {
   const session = await getServerSession(authOptions);
   
   if (!session?.user?.id) {
-    return { success: false, error: "Unauthorized" };
+    return { success: false, error: "Authentication required." };
   }
 
   try {
-    // 1. AI Generation 
+    // A. Credit Check
+    const [userRecord] = await db
+      .select({ credits: users.credits })
+      .from(users)
+      .where(eq(users.id, session.user.id));
+
+    if (!userRecord || (userRecord.credits ?? 0) < VIBE_COST) {
+      return { 
+        success: false, 
+        error: "Insufficient Vibes! Please refill your credits in the dashboard." 
+      };
+    }
+
+    // B. AI Generation (Call this before DB changes to avoid charging for failed AI)
     const aiResponse = await generateVibeWorkflow(prompt);
 
-    // 2. Create the Inquiry (Parent)
+    // C. Create the Inquiry (Parent)
     const [newInquiry] = await db.insert(inquiries).values({
       userId: session.user.id,
       title: prompt.substring(0, 50) || "New Vibe",
     }).returning();
 
     if (!newInquiry) {
-      throw new Error("Failed to create inquiry record.");
+      throw new Error("Critical: Failed to create inquiry record.");
     }
 
-    // 3. Create the first Task (Child V1)
-    // We execute this sequentially since transactions aren't supported in neon-http
+    // D. Create the first Task (Child V1)
     await db.insert(tasks).values({
       inquiryId: newInquiry.id,
       versionName: "V1: Initial Vibe",
@@ -78,7 +93,16 @@ export async function createNewVibe(prompt: string): Promise<ActionResponse> {
       version: 1,
     });
 
+    // E. Deduct Credits
+    await db
+      .update(users)
+      .set({
+        credits: sql`${users.credits} - ${VIBE_COST}`
+      })
+      .where(eq(users.id, session.user.id));
+
     revalidatePath("/playground");
+    revalidatePath("/admin"); // Update admin dashboard stats
     
     return { 
       success: true, 
@@ -86,9 +110,13 @@ export async function createNewVibe(prompt: string): Promise<ActionResponse> {
       emergentContent: aiResponse.emergentContent,
       inquiryId: newInquiry.id 
     };
+
   } catch (error) {
     console.error("Vibe Generation Error:", error);
-    return { success: false, error: "AI failed to generate workflow. Please try a different prompt." };
+    return { 
+      success: false, 
+      error: "The AI encountered an error while architecting your vibe. Try again." 
+    };
   }
 }
 
@@ -113,6 +141,7 @@ export async function getVibeHistory(inquiryId: string) {
 
 /**
  * 4. Edit an existing Vibe and save it as a new version.
+ * Production Ready: Credits applied for iterations.
  */
 export async function updateVibeVersion(
   id: string, 
@@ -126,10 +155,20 @@ export async function updateVibeVersion(
   }
 
   try {
-    // 1. AI Generation for the update
+    // A. Credit Check
+    const [userRecord] = await db
+      .select({ credits: users.credits })
+      .from(users)
+      .where(eq(users.id, session.user.id));
+
+    if (!userRecord || (userRecord.credits ?? 0) < VIBE_COST) {
+      return { success: false, error: "Insufficient credits for an update." };
+    }
+
+    // B. AI Generation for the update
     const aiResponse = await generateVibeWorkflow(prompt);
     
-    // 2. Insert new version
+    // C. Insert new version
     const [newTask] = await db.insert(tasks).values({
       inquiryId: id,
       versionName: `V${version + 1}: Edited Vibe`,
@@ -137,6 +176,14 @@ export async function updateVibeVersion(
       emergentContent: aiResponse.emergentContent, 
       version: version + 1,
     }).returning();
+
+    // D. Deduct Credits
+    await db
+      .update(users)
+      .set({
+        credits: sql`${users.credits} - ${VIBE_COST}`
+      })
+      .where(eq(users.id, session.user.id));
     
     revalidatePath("/playground");
     

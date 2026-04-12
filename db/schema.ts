@@ -7,6 +7,11 @@ export const users = pgTable("users", {
   email: text("email").unique().notNull(),
   password: text("password").notNull(), // Hashed with Bcrypt
 role: text("role").$type<"user" | "admin">().default("user"),
+
+credits: integer("credits").default(5), // Initial free credits
+lastMerchantTransactionId: text("last_merchant_transaction_id"),
+  plan: text("plan").$type<"free" | "builder" | "agency">().default("free"),
+  phonepeCustomerId: text("phonepe_customer_id"), // Useful for linking payments
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -28,6 +33,17 @@ export const tasks = pgTable("tasks", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const transactions = pgTable("transactions", {
+  id: text("id").primaryKey(), // Using PhonePe's Merchant Transaction ID
+  userId: uuid("user_id").references(() => users.id),
+  amount: integer("amount").notNull(), // Amount in Paise
+  creditsAdded: integer("credits_added").notNull(),
+  status: text("status").$type<"PENDING" | "COMPLETED" | "FAILED">().default("PENDING"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+
+
 
 export const inquiriesRelations = relations(inquiries, ({ one, many }) => ({
   user: one(users, {
@@ -48,4 +64,12 @@ export const tasksRelations = relations(tasks, ({ one }) => ({
 // 3. Define Relations for Users
 export const usersRelations = relations(users, ({ many }) => ({
   inquiries: many(inquiries),
+  transactions: many(transactions),
+}));
+
+export const transactionsRelations = relations(transactions, ({ one }) => ({
+  user: one(users, {
+    fields: [transactions.userId],
+    references: [users.id],
+  }),
 }));

@@ -6,24 +6,33 @@ import { eq } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 
 /**
- * Server Action to handle new user registration
+ * Production-ready Server Action for User Registration
+ * Includes initial credit grant for SaaS onboarding.
  */
 export async function signUpUser(formData: FormData) {
   const name = formData.get("name") as string;
-  const email = formData.get("email") as string;
+  const rawEmail = formData.get("email") as string;
   const password = formData.get("password") as string;
 
-  // 1. Basic Validation
-  if (!email || !password || !name) {
-    return { error: "Please fill in all fields." };
+  // 1. Basic Validation & Sanitization
+  if (!name?.trim() || !rawEmail?.trim() || !password) {
+    return { error: "All fields are required." };
   }
 
-  if (password.length < 6) {
-    return { error: "Password must be at least 6 characters long." };
+  const email = rawEmail.toLowerCase().trim();
+
+  if (password.length < 8) {
+    return { error: "Password must be at least 8 characters for better security." };
+  }
+
+  // Basic email regex
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) {
+    return { error: "Please enter a valid email address." };
   }
 
   try {
-    // 2. Check if user already exists in your Neon database
+    // 2. Check if user already exists
     const existingUser = await db.query.users.findFirst({
       where: eq(users.email, email),
     });
@@ -32,21 +41,26 @@ export async function signUpUser(formData: FormData) {
       return { error: "An account with this email already exists." };
     }
 
-    // 3. Hash the password securely
-    // We use 12 salt rounds for a good balance of security and speed
+    // 3. Secure Password Hashing
     const hashedPassword = await bcrypt.hash(password, 12);
 
-    // 4. Insert the new user into the database
-    // The 'role' defaults to 'user' as defined in your schema
+    // 4. Create User with Initial SaaS State
+    // We explicitly set the welcome credits here
     await db.insert(users).values({
-      name,
-      email,
+      name: name.trim(),
+      email: email,
       password: hashedPassword,
+      role: "user",        // Explicitly set default role
+      credits: 5,         // GRANT 5 FREE VIBES ON SIGNUP
+      plan: "free",       // Initialize plan status
     });
 
     return { success: true };
   } catch (error: any) {
-    console.error("SIGNUP_ERROR:", error);
-    return { error: "Could not create account. Please try again." };
+    // Log the error for internal tracking but keep the user message generic
+    console.error("PROD_SIGNUP_ERROR:", error);
+    return { 
+      error: "An unexpected error occurred during registration. Please try again later." 
+    };
   }
 }

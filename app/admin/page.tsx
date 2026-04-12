@@ -1,7 +1,10 @@
 import { db } from "@/db";
 import { users, inquiries, tasks } from "@/db/schema";
-import { desc, count } from "drizzle-orm";
-import { Users, FileText, Activity, ShieldCheck, ArrowLeft, History } from "lucide-react";
+import { desc, count, sql } from "drizzle-orm";
+import { 
+  Users, FileText, Activity, ShieldCheck, 
+  ArrowLeft, History, Zap, Coins, TrendingUp 
+} from "lucide-react";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { redirect } from "next/navigation";
@@ -15,12 +18,21 @@ export default async function AdminDashboard() {
   }
 
   // 2. Data Fetching
+  // Fetch users with their credit counts
   const allUsers = await db.select().from(users).orderBy(desc(users.createdAt));
+  
+  // Stats Aggregation
   const totalInquiries = await db.select({ value: count() }).from(inquiries);
   
+  // Calculate Global Credits (Sum of all user credits)
+  const globalCreditsResult = await db.select({ 
+    sum: sql<number>`sum(${users.credits})` 
+  }).from(users);
+  const globalCredits = globalCreditsResult[0]?.sum || 0;
+
   // Fetching recent tasks with inquiry titles for the activity feed
   const recentTasks = await db.query.tasks.findMany({
-    limit: 6,
+    limit: 8,
     orderBy: [desc(tasks.createdAt)],
     with: {
       inquiry: true,
@@ -38,7 +50,7 @@ export default async function AdminDashboard() {
               <ShieldCheck size={14} /> Admin Privileges Active
             </div>
             <h1 className="text-2xl md:text-3xl font-bold tracking-tight">System Console</h1>
-            <p className="text-gray-400 text-sm mt-1">Global monitoring and user management for YouPrompt.</p>
+            <p className="text-gray-400 text-sm mt-1">Global monitoring and credit management for YouPrompt.</p>
           </div>
           
           <Link 
@@ -50,44 +62,53 @@ export default async function AdminDashboard() {
         </header>
 
         {/* Stats Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 md:gap-6 mb-10">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 mb-10">
           <StatCard 
             icon={<Users className="text-blue-500" />} 
-            label="Total Registered Users" 
+            label="Total Users" 
             value={allUsers.length} 
-            description="Active accounts in database"
+            description="Active database accounts"
           />
           <StatCard 
             icon={<FileText className="text-purple-500" />} 
-            label="Total Vibes Generated" 
+            label="Total Vibes" 
             value={totalInquiries[0].value} 
-            description="Unique inquiry threads"
+            description="AI roadmap generations"
+          />
+          <StatCard 
+            icon={<Coins className="text-yellow-500" />} 
+            label="Circulating Credits" 
+            value={globalCredits} 
+            description="User-held tokens"
           />
           <StatCard 
             icon={<Activity className="text-green-500" />} 
-            label="API Gateway" 
+            label="System Status" 
             value="Healthy" 
-            description="Gemini-3-Flash status"
+            description="Gemini-2.0-Flash operational"
           />
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* User Management Table - Larger Section */}
+          {/* User Management Table */}
           <div className="lg:col-span-2 bg-[#161617] rounded-3xl border border-white/5 overflow-hidden flex flex-col">
-            <div className="p-6 border-b border-white/5 flex items-center justify-between">
-              <h2 className="text-lg font-semibold">User Registry</h2>
-              <span className="text-[10px] bg-white/5 px-2 py-1 rounded text-gray-400 font-mono shrink-0">
-                {allUsers.length} ENTRIES
+            <div className="p-6 border-b border-white/5 flex items-center justify-between bg-white/[0.01]">
+              <div className="flex items-center gap-3">
+                <h2 className="text-lg font-semibold">User Registry</h2>
+                <TrendingUp size={16} className="text-green-500 opacity-50" />
+              </div>
+              <span className="text-[10px] bg-white/5 px-2 py-1 rounded text-gray-400 font-mono">
+                {allUsers.length} TOTAL
               </span>
             </div>
             
-            {/* Scrollable Container for Table on Mobile */}
             <div className="overflow-x-auto custom-scrollbar">
-              <table className="w-full text-left min-w-[500px]">
+              <table className="w-full text-left min-w-[600px]">
                 <thead className="bg-white/[0.02] text-gray-500 text-[10px] uppercase tracking-widest">
                   <tr>
                     <th className="p-4 md:p-6 font-bold">Identity</th>
-                    <th className="p-4 md:p-6 font-bold">Role</th>
+                    <th className="p-4 md:p-6 font-bold text-center">Vibe Balance</th>
+                    <th className="p-4 md:p-6 font-bold">Access</th>
                     <th className="p-4 md:p-6 font-bold text-right">Join Date</th>
                   </tr>
                 </thead>
@@ -95,18 +116,27 @@ export default async function AdminDashboard() {
                   {allUsers.map((user) => (
                     <tr key={user.id} className="hover:bg-white/[0.01] transition-colors group">
                       <td className="p-4 md:p-6">
-                        <div className="font-medium text-sm truncate max-w-[150px] md:max-w-none">{user.name}</div>
-                        <div className="text-xs text-gray-500 truncate max-w-[150px] md:max-w-none">{user.email}</div>
+                        <div className="font-medium text-sm">{user.name}</div>
+                        <div className="text-[11px] text-gray-500 font-mono opacity-60">{user.email}</div>
                       </td>
                       <td className="p-4 md:p-6">
-                        <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-tighter ${
-                          user.role === 'admin' ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20' : 'bg-gray-500/10 text-gray-400'
+                        <div className="flex items-center justify-center gap-2">
+                           <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border ${
+                             (user.credits ?? 0) > 0 ? 'bg-blue-500/10 border-blue-500/20 text-blue-400' : 'bg-red-500/10 border-red-500/20 text-red-400'
+                           }`}>
+                             <Zap size={10} /> {user.credits}
+                           </div>
+                        </div>
+                      </td>
+                      <td className="p-4 md:p-6">
+                        <span className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-tighter ${
+                          user.role === 'admin' ? 'bg-purple-500/10 text-purple-400 border border-purple-500/20' : 'bg-gray-500/10 text-gray-400'
                         }`}>
                           {user.role}
                         </span>
                       </td>
                       <td className="p-4 md:p-6 text-gray-500 text-xs text-right font-mono">
-                        {new Date(user.createdAt!).toLocaleDateString('en-GB')}
+                        {user.createdAt ? new Date(user.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : '---'}
                       </td>
                     </tr>
                   ))}
@@ -115,35 +145,46 @@ export default async function AdminDashboard() {
             </div>
           </div>
 
-          {/* Activity Feed - Sidebar Section */}
-          <div className="bg-[#161617] rounded-3xl border border-white/5 p-6">
-            <div className="flex items-center gap-2 mb-6">
-              <History size={18} className="text-gray-400" />
-              <h2 className="text-lg font-semibold">Live Activity</h2>
+          {/* Activity Feed */}
+          <div className="bg-[#161617] rounded-3xl border border-white/5 p-6 flex flex-col shadow-2xl">
+            <div className="flex items-center justify-between mb-8">
+              <div className="flex items-center gap-2">
+                <History size={18} className="text-gray-400" />
+                <h2 className="text-lg font-semibold tracking-tight">Vibe Stream</h2>
+              </div>
+              <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
             </div>
-            <div className="space-y-6">
-              {recentTasks.map((task) => (
-                <div key={task.id} className="relative pl-4 border-l border-white/5">
-                  <div className="absolute -left-[1px] top-0 w-[2px] h-4 bg-blue-500"></div>
-                  <div className="text-[10px] text-gray-500 font-mono mb-1">
-                    {new Date(task.createdAt!).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+
+            <div className="space-y-6 flex-1">
+              {recentTasks.length > 0 ? recentTasks.map((task) => (
+                <div key={task.id} className="relative pl-4 border-l border-white/5 group">
+                  <div className="absolute -left-[1px] top-0 w-[2px] h-4 bg-blue-500 group-hover:h-full transition-all duration-300"></div>
+                  <div className="text-[10px] text-gray-500 font-mono mb-1 flex items-center justify-between">
+                    <span>{new Date(task.createdAt!).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                    <span className="opacity-0 group-hover:opacity-100 transition-opacity text-blue-400">ID: {task.id.substring(0,4)}</span>
                   </div>
-                  <div className="text-sm font-medium truncate mb-1">
-                    {task.inquiry?.title || "Unknown Vibe"}
+                  <div className="text-sm font-medium truncate mb-1 pr-4">
+                    {task.inquiry?.title || "Project Untitled"}
                   </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-[9px] px-1.5 py-0.5 bg-white/5 rounded text-gray-400">
-                      {task.versionName}
+                  <div className="flex items-center gap-2">
+                    <span className="text-[9px] px-1.5 py-0.5 bg-blue-500/5 border border-blue-500/10 rounded text-blue-400 font-bold uppercase">
+                      V{task.versionName}
                     </span>
-                    <span className="text-[9px] text-gray-600 truncate max-w-[120px]">
-                      By ID: {task.inquiry?.userId?.substring(0, 8)}...
+                    <span className="text-[9px] text-gray-600 truncate italic">
+                      UID: {task.inquiry?.userId?.substring(0, 12)}
                     </span>
                   </div>
                 </div>
-              ))}
+              )) : (
+                <div className="text-center py-20 opacity-20">
+                  <Activity size={32} className="mx-auto mb-4" />
+                  <p className="text-xs">No activity recorded yet.</p>
+                </div>
+              )}
             </div>
-            <button className="w-full mt-8 py-3 rounded-xl bg-white/5 border border-white/5 text-[10px] font-bold uppercase tracking-widest text-gray-400 hover:text-white hover:bg-white/10 transition-all">
-              View Full Audit Log
+
+            <button className="w-full mt-10 py-3.5 rounded-2xl bg-white/[0.03] border border-white/5 text-[10px] font-black uppercase tracking-[0.2em] text-gray-500 hover:text-white hover:bg-white/10 hover:border-white/20 transition-all">
+              Launch Data Audit
             </button>
           </div>
         </div>
@@ -159,14 +200,22 @@ function StatCard({ icon, label, value, description }: {
   description: string 
 }) {
   return (
-    <div className="p-6 rounded-3xl bg-[#161617] border border-white/5 group hover:border-white/10 transition-all">
+    <div className="p-6 rounded-3xl bg-[#161617] border border-white/5 group hover:border-white/10 transition-all shadow-xl">
       <div className="flex items-start justify-between mb-4">
-        <div className="p-2 rounded-xl bg-white/5">{icon}</div>
-        <div className="text-[10px] font-bold text-gray-600 uppercase tracking-widest">Live</div>
+        <div className="p-2.5 rounded-xl bg-white/[0.03] border border-white/5 group-hover:scale-110 transition-transform">
+          {icon}
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="relative flex h-2 w-2">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
+          </span>
+          <span className="text-[10px] font-bold text-gray-600 uppercase tracking-widest">Live</span>
+        </div>
       </div>
-      <div className="text-gray-400 text-xs mb-1 font-medium">{label}</div>
-      <div className="text-2xl md:text-3xl font-bold mb-1 tracking-tight">{value}</div>
-      <div className="text-[10px] text-gray-600 font-medium">{description}</div>
+      <div className="text-gray-500 text-xs mb-1 font-medium tracking-wide uppercase">{label}</div>
+      <div className="text-2xl md:text-3xl font-black mb-1 tracking-tighter">{value}</div>
+      <div className="text-[10px] text-gray-600 font-medium leading-relaxed">{description}</div>
     </div>
   );
 }

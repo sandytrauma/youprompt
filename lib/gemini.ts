@@ -1,4 +1,5 @@
-import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
+import { GoogleGenerativeAI, SchemaType, HarmCategory, 
+  HarmBlockThreshold } from "@google/generative-ai";
 
 if (!process.env.GEMINI_API_KEY) {
   throw new Error("Missing GEMINI_API_KEY environment variable");
@@ -6,7 +7,7 @@ if (!process.env.GEMINI_API_KEY) {
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-// Updated schema to include emergentContent at the root level
+// Structured Schema for consistent JSON output
 const responseSchema = {
   type: SchemaType.OBJECT,
   properties: {
@@ -18,16 +19,16 @@ const responseSchema = {
         properties: {
           objective: {
             type: SchemaType.STRING,
-            description: "The goal of this development phase.",
+            description: "The goal of this development phase (e.g., Auth Setup).",
           },
           procedures: {
             type: SchemaType.ARRAY,
             items: { type: SchemaType.STRING },
-            description: "Step-by-step actions.",
+            description: "Step-by-step technical actions.",
           },
           precisePrompt: {
             type: SchemaType.STRING,
-            description: "High-tech prompt for v0/Bolt to execute this step.",
+            description: "A high-density prompt optimized for v0/Bolt.new to execute this specific step.",
           },
         },
         required: ["objective", "procedures", "precisePrompt"],
@@ -35,31 +36,56 @@ const responseSchema = {
     },
     emergentContent: {
       type: SchemaType.STRING,
-      description: "A high-level architectural analysis, risk assessment, and technical advice for the project.",
+      description: "Deep architectural analysis, risk assessment, and scalability advice.",
     },
   },
   required: ["steps", "emergentContent"],
 } as const;
 
 export async function generateVibeWorkflow(userPrompt: string, retries = 3) {
-  const model = genAI.getGenerativeModel({ 
-    model: "gemini-2.5-flash",
-    generationConfig: {
-      responseMimeType: "application/json",
-      responseSchema: responseSchema as any, 
-      temperature: 0.2, // Slightly increased for better 'emergent' creativity
+ const model = genAI.getGenerativeModel({ 
+  model: "gemini-2.5-flash",
+  generationConfig: {
+    responseMimeType: "application/json",
+    responseSchema: responseSchema as any, 
+    temperature: 0.2,
+    topP: 0.95,
+  },
+    // Prevent AI from being "too safe" and refusing to generate code logic
+   safetySettings: [
+    { 
+      category: HarmCategory.HARM_CATEGORY_HARASSMENT, 
+      threshold: HarmBlockThreshold.BLOCK_NONE 
     },
+    { 
+      category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, 
+      threshold: HarmBlockThreshold.BLOCK_NONE 
+    },
+    { 
+      category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, 
+      threshold: HarmBlockThreshold.BLOCK_NONE 
+    },
+    { 
+      category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, 
+      threshold: HarmBlockThreshold.BLOCK_NONE 
+    },
+  ],
   });
 
   const systemInstruction = `
-    You are a Senior Software Architect and Operations Strategist. 
-    Transform the user idea into a dual-layered response:
-    
-    LAYER 1: The 7-Step "Vibe Coding" roadmap (Architecture, Auth, API, Layout, UI, Logic, Deploy).
-    LAYER 2: Emergent Intelligence. Analyze the idea for hidden risks, scalability bottlenecks, 
-    and architectural nuances that a junior dev might miss.
+    You are a Senior Software Architect and Vibe Coding Expert. 
+    Your mission is to turn a vague user idea into a precise, 7-step executable roadmap.
 
-    STRICT: Return ONLY JSON. The steps array must contain EXACTLY 7 items.
+    INSTRUCTIONS:
+    1. LAYER 1 (Roadmap): Break the app into 7 logical stages: 
+       - Architecture/Schema, Authentication, Core API logic, Layout/UI, Feature Logic, Optimization, and Deployment.
+    2. LAYER 2 (Emergent Intelligence): Act as a 'Chief Technical Officer'. 
+       Highlight technical debt, hidden edge cases (e.g., race conditions, state management pitfalls), 
+       and cost-saving deployment strategies.
+    3. PROMPTS: Each 'precisePrompt' MUST be formatted as a direct instruction to an AI coder like v0 or Bolt.new.
+       Include necessary context so each step can be built in isolation.
+
+    STRICT: Output EXACTLY 7 steps in the JSON 'steps' array.
   `;
 
   for (let i = 0; i < retries; i++) {
@@ -70,22 +96,33 @@ export async function generateVibeWorkflow(userPrompt: string, retries = 3) {
       ]);
 
       const responseText = result.response.text();
-      return JSON.parse(responseText);
+      const parsedData = JSON.parse(responseText);
+
+      // Validation: Ensure we got exactly 7 steps
+      if (parsedData.steps && parsedData.steps.length !== 7) {
+        console.warn(`AI returned ${parsedData.steps.length} steps. Retrying to get 7...`);
+        if (i < retries - 1) continue;
+      }
+
+      return parsedData;
 
     } catch (error: any) {
-      // Handle the 503 error gracefully with a retry loop
-      const is503 = error?.status === 503 || error?.message?.includes("503");
+      const status = error?.status || error?.response?.status;
+      const isRetryable = status === 503 || status === 504 || status === 429;
       
-      if (is503 && i < retries - 1) {
-  // Wait 2s, then 4s, then 8s...
-  const waitTime = Math.pow(2, i + 1) * 1000; 
-  console.warn(`Gemini 503 - Attempt ${i + 1}. Retrying in ${waitTime/1000}s...`);
-  await new Promise(resolve => setTimeout(resolve, waitTime));
-  continue;
-}
+      if (isRetryable && i < retries - 1) {
+        const waitTime = Math.pow(2, i + 1) * 1000; 
+        console.warn(`Gemini Error ${status} - Attempt ${i + 1}. Retrying in ${waitTime/1000}s...`);
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+        continue;
+      }
 
       console.error("AI Workflow Error:", error);
-      throw new Error(is503 ? "Gemini is busy. Try again in 10 seconds." : "Failed to generate roadmap.");
+      throw new Error(
+        isRetryable 
+          ? "Our AI engine is temporarily busy. Please try again in 10 seconds." 
+          : "Failed to generate your roadmap. Please try a different description."
+      );
     }
   }
 }

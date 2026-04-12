@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
-import { Toaster } from "react-hot-toast"; // Or your preferred toast library
+import { Toaster } from "react-hot-toast";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -27,7 +27,7 @@ export const metadata: Metadata = {
   title: "YouPrompt | Vibe Code Your Next App",
   description: "Generate structured 7-step workflows and precise AI prompts to build apps at the speed of thought.",
   icons: {
-    icon: "/favicon.ico", // Ensure you have this in your /public folder
+    icon: "/favicon.ico",
   },
 };
 
@@ -41,12 +41,11 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} dark antialiased`}
       style={{ colorScheme: 'dark' }}
-      suppressHydrationWarning // Prevents hydration mismatch warnings with dark mode/extensions
+      suppressHydrationWarning 
     >
       <body className="bg-[#0a0a0a] text-white selection:bg-blue-500/30 min-h-screen">
         <Providers>
           {children}
-          {/* Global Toast notifications for Auth and Workflow errors */}
           <Toaster 
             position="bottom-right"
             toastOptions={{

@@ -13,10 +13,11 @@ import {
   Loader2, Send, Cpu, Layers, RotateCcw, 
   Globe, ExternalLink, LogOut, ShieldCheck, 
   ChevronRight, Sparkles, ToyBrick, Zap,
-  AlertCircle, Menu, X, Copy, Check
+  AlertCircle, Menu, X, Copy, Check, PlusCircle
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { RiskPopup } from "../components/RiskPopup";
+import { toast } from "sonner"; // Assuming you use sonner or similar for toasts
 
 interface Step {
   objective: string;
@@ -25,7 +26,7 @@ interface Step {
 }
 
 export default function Playground() {
-  const { data: session, status } = useSession();
+  const { data: session, status, update } = useSession();
   const router = useRouter();
   
   // UI States
@@ -49,6 +50,7 @@ export default function Playground() {
   const [isRiskModalOpen, setIsRiskModalOpen] = useState(false);
 
   const isAdmin = session?.user?.role === "admin";
+  const userCredits = session?.user?.credits ?? 0;
 
   useEffect(() => { setMounted(true); }, []);
 
@@ -93,7 +95,7 @@ export default function Playground() {
     if (isLoading) return;
     setSelectedStep(null);
     setIsLoading(true);
-    setIsLeftSidebarOpen(false); // Close drawer on mobile
+    setIsLeftSidebarOpen(false); 
 
     try {
       const result = await getVibeHistory(id);
@@ -111,10 +113,22 @@ export default function Playground() {
     }
   }
 
-  // 3. Handle Submission
+  // 3. Handle Submission with Credit Check
   async function handleSubmit(e?: React.FormEvent) {
     if (e) e.preventDefault();
     if (!promptInput.trim() || isLoading) return;
+
+    // SaaS Credit Blocker
+    if (userCredits <= 0 && !isAdmin) {
+      toast.error("Insufficient Credits", {
+        description: "You've reached your free limit. Please buy credits to continue.",
+        action: {
+          label: "Buy Credits",
+          onClick: () => router.push("/refill"),
+        },
+      });
+      return;
+    }
 
     setIsLoading(true);
     try {
@@ -123,6 +137,9 @@ export default function Playground() {
         : await createNewVibe(promptInput);
       
       if (result.success) {
+        // REFRESH SESSION: This updates the credit count in the UI
+        await update(); 
+        
         setSteps(result.steps as Step[]);
         setEmergentContent(result.emergentContent || "");
         setCurrentVersion(result.version ?? (currentInquiryId ? currentVersion + 1 : 1));
@@ -141,9 +158,12 @@ export default function Playground() {
             setIsRiskModalOpen(true);
           }, 500);
         }
+      } else if (result.error === "INSUFFICIENT_CREDITS") {
+        router.push("/refill");
       }
     } catch (error) {
       console.error("Submission failed", error);
+      toast.error("Vibe Generation Failed", { description: "Something went wrong with the AI." });
     } finally {
       setIsLoading(false);
     }
@@ -160,7 +180,7 @@ export default function Playground() {
   const platforms = [
     { name: "Gemini", url: "https://aistudio.google.com/", color: "text-blue-400" },
     { name: "v0.dev", url: "https://v0.dev/", color: "text-pink-400" },
-    { name: "Bolt.new", url: "https://bolt.new/", color: "text-orange-400" },
+    { name: "Bolt.new", url: "https://bolt.new/?ref=youprompt", color: "text-orange-400" },
     { name: "Claude", url: "https://claude.ai/", color: "text-orange-200" }
   ];
 
@@ -194,6 +214,24 @@ export default function Playground() {
           <button onClick={() => setIsLeftSidebarOpen(false)} className="md:hidden p-2 text-gray-500"><X size={20}/></button>
         </div>
         
+        {/* Credit Indicator Card */}
+        <div className="mb-6 p-4 rounded-2xl bg-gradient-to-br from-blue-600/20 to-purple-600/10 border border-blue-500/20 shadow-inner">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[10px] font-bold text-blue-400 uppercase tracking-widest">Available Vibes</span>
+            <Zap size={12} className="text-blue-400" />
+          </div>
+          <div className="flex items-end gap-1">
+            <span className="text-2xl font-black text-white">{userCredits}</span>
+            <span className="text-xs text-gray-500 mb-1">/{session?.user?.plan === 'free' ? '5' : '∞'}</span>
+          </div>
+          <button 
+            onClick={() => router.push("/refill")}
+            className="mt-3 w-full py-2 bg-white/5 hover:bg-white/10 rounded-lg text-[10px] font-bold uppercase tracking-tighter flex items-center justify-center gap-2 transition-all"
+          >
+            <PlusCircle size={12} /> Refill Credits
+          </button>
+        </div>
+
         {isAdmin && (
           <div className="flex p-1 bg-black/40 rounded-xl mb-6 border border-white/5">
             <button className="flex-1 flex items-center justify-center gap-2 py-2 text-[10px] font-bold uppercase tracking-tight rounded-lg bg-blue-600/10 text-blue-400 border border-blue-500/20">
@@ -236,7 +274,7 @@ export default function Playground() {
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-xs font-semibold truncate">{session?.user?.name}</p>
-              <p className="text-[10px] text-gray-500 uppercase tracking-tighter">{session?.user?.role}</p>
+              <p className="text-[10px] text-gray-500 uppercase tracking-tighter">{session?.user?.plan} plan</p>
             </div>
           </div>
           <button onClick={() => signOut({ callbackUrl: "/login" })} className="flex items-center justify-between w-full p-3 rounded-xl bg-white/5 border border-white/5 text-gray-400 hover:text-red-400 transition-all text-xs font-medium">
@@ -285,11 +323,19 @@ export default function Playground() {
             <input 
               value={promptInput}
               onChange={(e) => setPromptInput(e.target.value)}
-              placeholder={currentInquiryId ? "Suggest changes..." : "Describe your vibe..."}
-              className="w-full bg-[#161617] rounded-full py-4 md:py-5 px-6 md:px-8 pr-14 md:pr-16 outline-none border border-white/10 focus:border-blue-500/50 transition-all shadow-2xl text-sm"
-              disabled={isLoading}
+              placeholder={userCredits <= 0 && !isAdmin ? "Credits depleted. Refill to continue..." : (currentInquiryId ? "Suggest changes..." : "Describe your vibe...")}
+              className={`w-full bg-[#161617] rounded-full py-4 md:py-5 px-6 md:px-8 pr-14 md:pr-16 outline-none border transition-all shadow-2xl text-sm ${
+                userCredits <= 0 && !isAdmin ? "border-red-500/30 text-gray-600 cursor-not-allowed" : "border-white/10 focus:border-blue-500/50"
+              }`}
+              disabled={isLoading || (userCredits <= 0 && !isAdmin)}
             />
-            <button type="submit" disabled={isLoading || !promptInput.trim()} className="absolute right-2 md:right-3 top-1/2 -translate-y-1/2 p-2.5 md:p-3 bg-white text-black rounded-full hover:scale-105 transition-all">
+            <button 
+              type="submit" 
+              disabled={isLoading || !promptInput.trim() || (userCredits <= 0 && !isAdmin)} 
+              className={`absolute right-2 md:right-3 top-1/2 -translate-y-1/2 p-2.5 md:p-3 rounded-full transition-all ${
+                userCredits <= 0 && !isAdmin ? "bg-gray-800 text-gray-500" : "bg-white text-black hover:scale-105"
+              }`}
+            >
               {isLoading ? <Loader2 className="animate-spin" size={18} /> : currentInquiryId ? <RotateCcw size={18} /> : <Send size={18} />}
             </button>
           </form>
@@ -303,31 +349,31 @@ export default function Playground() {
         md:relative md:translate-x-0 md:flex md:w-80 md:shrink-0
       `}>
         <div className="flex items-center justify-between p-4 md:hidden border-b border-white/5">
-           <h2 className="text-xs font-bold uppercase tracking-widest text-gray-400">Builder Hub</h2>
-           <button onClick={() => setIsRightSidebarOpen(false)} className="p-2 text-gray-500"><X size={20}/></button>
+            <h2 className="text-xs font-bold uppercase tracking-widest text-gray-400">Builder Hub</h2>
+            <button onClick={() => setIsRightSidebarOpen(false)} className="p-2 text-gray-500"><X size={20}/></button>
         </div>
 
         {/* INTEGRATED MASTER PROMPT SECTION */}
         <div className="p-4 border-b border-white/5 bg-white/[0.02]">
-           <div className="flex items-center justify-between mb-3 px-2">
-             <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Master Workflow</span>
-             {steps.length > 0 && (
-               <button 
-                onClick={handleCopyMasterPrompt}
-                className={`flex items-center gap-1.5 text-[10px] font-bold px-3 py-1 rounded-lg transition-all ${copied ? 'bg-green-600/20 text-green-400' : 'bg-blue-600 text-white hover:bg-blue-700'}`}
-               >
-                 {copied ? <Check size={10} /> : <Copy size={10} />}
-                 {copied ? "Copied" : "Copy Full Prompt"}
-               </button>
-             )}
-           </div>
-           <div className="bg-black/40 rounded-xl p-3 border border-white/5 h-24 overflow-y-auto custom-scrollbar">
-              <p className="text-[10px] font-mono text-gray-500 leading-relaxed italic">
-                {steps.length > 0 
-                  ? fullMasterPrompt.substring(0, 150) + "..."
-                  : "Start a vibe to compile your master prompt block here."}
-              </p>
-           </div>
+            <div className="flex items-center justify-between mb-3 px-2">
+              <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Master Workflow</span>
+              {steps.length > 0 && (
+                <button 
+                 onClick={handleCopyMasterPrompt}
+                 className={`flex items-center gap-1.5 text-[10px] font-bold px-3 py-1 rounded-lg transition-all ${copied ? 'bg-green-600/20 text-green-400' : 'bg-blue-600 text-white hover:bg-blue-700'}`}
+                >
+                  {copied ? <Check size={10} /> : <Copy size={10} />}
+                  {copied ? "Copied" : "Copy Full Prompt"}
+                </button>
+              )}
+            </div>
+            <div className="bg-black/40 rounded-xl p-3 border border-white/5 h-24 overflow-y-auto custom-scrollbar">
+               <p className="text-[10px] font-mono text-gray-500 leading-relaxed italic">
+                 {steps.length > 0 
+                   ? fullMasterPrompt.substring(0, 150) + "..."
+                   : "Start a vibe to compile your master prompt block here."}
+               </p>
+            </div>
         </div>
 
         {/* Tabs Header */}

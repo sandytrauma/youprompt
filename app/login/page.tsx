@@ -4,7 +4,7 @@ import { useState, useEffect, Suspense } from "react";
 import { signIn, useSession } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { Zap, Loader2, AlertCircle, Eye, EyeOff, ArrowRight } from "lucide-react";
+import { Zap, Loader2, AlertCircle, Eye, EyeOff, ArrowRight, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 
 function LoginForm() {
@@ -23,16 +23,20 @@ function LoginForm() {
     setMounted(true);
   }, []);
 
+  // Redirect authenticated users
   useEffect(() => {
     if (mounted && status === "authenticated") {
       router.push("/playground");
     }
   }, [status, mounted, router]);
 
+  // Sync server-side auth errors to the UI
   useEffect(() => {
     const errorParam = searchParams.get("error");
     if (errorParam === "CredentialsSignin") {
       setError("Invalid email or password. Please try again.");
+    } else if (errorParam === "OAuthAccountNotLinked") {
+      setError("Email already in use with another provider.");
     }
   }, [searchParams]);
 
@@ -65,41 +69,65 @@ function LoginForm() {
 
   if (!mounted || status === "loading") {
     return (
-      <div className="flex flex-col items-center justify-center gap-4">
-        <Loader2 className="animate-spin text-blue-500" size={32} />
-        <p className="text-gray-500 text-xs animate-pulse uppercase tracking-widest">Verifying Session...</p>
+      <div className="flex flex-col items-center justify-center gap-6 py-20">
+        <div className="relative">
+          <Loader2 className="animate-spin text-blue-500" size={40} />
+          <div className="absolute inset-0 blur-xl bg-blue-500/20 animate-pulse rounded-full" />
+        </div>
+        <p className="text-gray-500 text-[10px] font-bold uppercase tracking-[0.3em] animate-pulse">
+          Establishing Secure Session...
+        </p>
       </div>
     );
   }
 
   return (
     <motion.div 
-      initial={{ opacity: 0, y: 10 }}
+      initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5, ease: "easeOut" }}
       className="w-full max-w-md relative z-10"
     >
-      <div className="text-center mb-10">
-        <Link href="/" className="inline-flex items-center gap-2 font-bold text-2xl tracking-tighter mb-4 group">
-          <div className="bg-blue-600 p-1.5 rounded-lg group-hover:scale-110 transition-transform">
-            <Zap size={20} fill="white" />
-          </div>
-          YouPrompt
-        </Link>
-        <h2 className="text-xl font-medium">Access your workspace</h2>
-        <p className="text-gray-500 text-sm mt-2">Enter your authorized credentials to continue.</p>
+      {/* SaaS Welcome Badge - Visual Hook for New Users */}
+      <div className="flex justify-center mb-8">
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ delay: 0.2 }}
+          className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/20"
+        >
+          <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+          <span className="text-[10px] font-black text-blue-400 uppercase tracking-widest">
+            New: Get 5 Free Vibes on Signup
+          </span>
+        </motion.div>
       </div>
 
-      <div className="bg-[#161617] border border-white/5 p-8 rounded-[2.5rem] shadow-2xl relative overflow-hidden">
-        <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+      <div className="text-center mb-10">
+        <Link href="/" className="inline-flex items-center gap-2 font-bold text-3xl tracking-tighter mb-4 group outline-none">
+          <div className="bg-blue-600 p-2 rounded-xl group-hover:scale-110 group-focus:scale-110 transition-transform shadow-[0_0_20px_rgba(37,99,235,0.3)]">
+            <Zap size={22} fill="white" className="text-white" />
+          </div>
+          <span className="bg-clip-text text-transparent bg-gradient-to-b from-white to-white/60">
+            YouPrompt
+          </span>
+        </Link>
+        <h2 className="text-xl font-semibold text-white/90">Access your workspace</h2>
+        <p className="text-gray-500 text-sm mt-2 font-medium">Log in to manage your AI workflows and credits.</p>
+      </div>
+
+      <div className="bg-[#111112] border border-white/5 p-8 md:p-10 rounded-[2.5rem] shadow-[0_25px_50px_-12px_rgba(0,0,0,0.5)] relative overflow-hidden group/container">
+        {/* Decorative Top Line */}
+        <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-blue-500/30 to-transparent" />
 
         <form onSubmit={handleSubmit} className="space-y-6">
           <AnimatePresence mode="wait">
             {error && (
               <motion.div 
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: "auto" }}
-                exit={{ opacity: 0, height: 0 }}
-                className="bg-red-500/5 border border-red-500/20 text-red-400 p-4 rounded-2xl text-xs flex items-center gap-3"
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className="bg-red-500/5 border border-red-500/20 text-red-400 p-4 rounded-2xl text-xs flex items-center gap-3 font-medium"
               >
                 <AlertCircle size={16} className="shrink-0" />
                 {error}
@@ -107,21 +135,26 @@ function LoginForm() {
             )}
           </AnimatePresence>
 
-          <div className="space-y-2">
-            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-[0.2em] ml-1">Email Address</label>
+          <div className="space-y-2.5">
+            <label className="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em] ml-1">Email Address</label>
             <input
               type="email"
               required
               autoComplete="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full bg-black/40 border border-white/5 rounded-2xl px-5 py-4 outline-none focus:border-blue-500/40 focus:bg-black/60 transition-all text-sm"
+              className="w-full bg-black/40 border border-white/5 rounded-2xl px-5 py-4 outline-none focus:border-blue-500/40 focus:ring-1 focus:ring-blue-500/20 focus:bg-black/60 transition-all text-sm placeholder:text-gray-700"
               placeholder="sandeep@example.com"
             />
           </div>
 
-          <div className="space-y-2">
-            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-[0.2em] ml-1">Password</label>
+          <div className="space-y-2.5">
+            <div className="flex items-center justify-between px-1">
+              <label className="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em]">Password</label>
+              <Link href="/forgot-password" className="text-[10px] font-bold text-blue-500/80 hover:text-blue-400 transition-colors uppercase tracking-widest">
+                Forgot?
+              </Link>
+            </div>
             <div className="relative">
               <input
                 type={showPassword ? "text" : "password"}
@@ -129,13 +162,14 @@ function LoginForm() {
                 autoComplete="current-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full bg-black/40 border border-white/5 rounded-2xl px-5 py-4 outline-none focus:border-blue-500/40 focus:bg-black/60 transition-all text-sm"
+                className="w-full bg-black/40 border border-white/5 rounded-2xl px-5 py-4 outline-none focus:border-blue-500/40 focus:ring-1 focus:ring-blue-500/20 focus:bg-black/60 transition-all text-sm placeholder:text-gray-700"
                 placeholder="••••••••"
               />
               <button 
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white transition-colors"
+                className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-600 hover:text-white transition-colors p-2"
+                tabIndex={-1}
               >
                 {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
               </button>
@@ -145,30 +179,32 @@ function LoginForm() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-white text-black font-bold py-4 rounded-2xl hover:bg-blue-50 hover:scale-[1.01] active:scale-[0.99] transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:hover:scale-100 mt-2"
+            className="w-full bg-white text-black font-black py-4.5 rounded-2xl hover:bg-blue-50 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:hover:scale-100 shadow-xl mt-4 text-sm uppercase tracking-widest"
           >
-            {loading ? <Loader2 className="animate-spin" size={20} /> : <>Continue <ArrowRight size={18} /></>}
+            {loading ? <Loader2 className="animate-spin" size={20} /> : <>Continue to Workspace <ArrowRight size={18} /></>}
           </button>
         </form>
 
-        <div className="mt-8 pt-8 border-t border-white/5 text-center space-y-4">
+        <div className="mt-10 pt-8 border-t border-white/5 text-center space-y-6">
           <p className="text-gray-400 text-sm">
             Don't have an account?{" "}
             <Link 
               href="/signup" 
-              className="text-white font-semibold hover:text-blue-400 transition-colors underline underline-offset-4 decoration-white/20"
+              className="text-white font-bold hover:text-blue-400 transition-colors underline underline-offset-8 decoration-white/10 hover:decoration-blue-400/40"
             >
-              Sign up
+              Start Free Trial
             </Link>
           </p>
           
-          <p className="text-gray-500 text-[10px] leading-relaxed">
-            System access restricted to authorized personnel only. 
-            <br />
-            <span className="inline-block mt-1 text-gray-600">
-              Forgot credentials? Contact your administrator.
-            </span>
-          </p>
+          <div className="flex items-center justify-center gap-4 opacity-40 grayscale hover:grayscale-0 transition-all duration-500">
+            <div className="flex items-center gap-1.5 text-[10px] font-bold text-gray-500 uppercase tracking-widest">
+              <ShieldCheck size={14} /> Encrypted
+            </div>
+            <div className="w-1 h-1 rounded-full bg-gray-800" />
+            <div className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">
+              SaaS v2.4
+            </div>
+          </div>
         </div>
       </div>
     </motion.div>
@@ -177,8 +213,11 @@ function LoginForm() {
 
 export default function LoginPage() {
   return (
-    <div className="min-h-screen bg-[#0a0a0a] text-white flex items-center justify-center p-6 font-[family-name:var(--font-geist-sans)]">
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-blue-600/5 blur-[120px] rounded-full pointer-events-none" />
+    <div className="min-h-screen bg-[#0a0a0a] text-white flex items-center justify-center p-6 font-[family-name:var(--font-geist-sans)] selection:bg-blue-500/30">
+      {/* Depth Layer */}
+      <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-blue-600/[0.03] blur-[120px] rounded-full pointer-events-none" />
+      <div className="fixed bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-blue-600/[0.02] to-transparent pointer-events-none" />
+      
       <Suspense fallback={<Loader2 className="animate-spin text-blue-500" size={32} />}>
         <LoginForm />
       </Suspense>

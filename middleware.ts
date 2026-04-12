@@ -21,22 +21,32 @@ export default withAuth(
   {
     callbacks: {
       /**
-       * The 'authorized' callback determines if the middleware function even runs.
-       * If it returns false, the user is redirected to the sign-in page automatically.
+       * Ensure authorized only checks for a token presence.
+       * withAuth handles the redirect to /login automatically if this returns false.
        */
       authorized: ({ token }) => !!token,
+    },
+    // Adding pages config here ensures middleware knows where to send unauthenticated users
+    pages: {
+      signIn: "/login",
     },
   }
 );
 
 /**
  * Configure which paths the middleware should run on.
- * This prevents middleware from running on static assets, images, and public routes.
  */
 export const config = {
   matcher: [
+    /*
+     * Match all protected routes:
+     * - /playground and subpaths
+     * - /admin and subpaths
+     * * IMPORTANT: Ensure /api/auth is NOT matched. 
+     * Your current specific matching is good, but if you use a wider matcher, 
+     * use a negative lookahead to exclude NextAuth internals.
+     */
     "/playground/:path*", 
     "/admin/:path*",
-    // Add other protected routes here
   ],
 };
