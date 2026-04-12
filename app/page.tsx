@@ -9,7 +9,6 @@ import DemoModal from "./components/ViewDemo";
 /**
  * ScrambledRain Component
  * Vertical shower with stable, non-bright colors.
- * Characters fade in from top and remain at a constant, soft opacity.
  */
 function ScrambledRain() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -29,11 +28,9 @@ function ScrambledRain() {
     const drops: number[] = new Array(columns).fill(0);
 
     const draw = () => {
-      // Stable background refresh
       ctx.fillStyle = "rgba(10, 10, 10, 0.15)";
       ctx.fillRect(0, 0, width, height);
 
-      // Set a stable, subtle blue (no shadows or glow)
       ctx.font = `${fontSize}px monospace`;
       
       for (let i = 0; i < drops.length; i++) {
@@ -41,13 +38,11 @@ function ScrambledRain() {
         const x = i * fontSize;
         const y = drops[i] * fontSize;
 
-        // Calculate a smooth alpha that is stable once it leaves the very top
         const opacity = Math.min((y / height) * 0.3, 0.2); 
         
         ctx.fillStyle = `rgba(37, 99, 235, ${opacity})`;
         ctx.fillText(text, x, y);
 
-        // Reset drop to top
         if (y > height && Math.random() > 0.975) {
           drops[i] = 0;
         }
@@ -96,17 +91,14 @@ export default function LandingPage() {
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-white flex flex-col items-center overflow-x-hidden selection:bg-blue-500/30 relative">
       
-      {/* Scrambled Alphabet Shower */}
       <ScrambledRain />
 
-      {/* Dynamic Background Elements */}
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-[1400px] h-[800px] pointer-events-none z-1">
         <div className="absolute top-[-10%] left-1/2 -translate-x-1/2 w-[300px] sm:w-[1000px] h-[300px] sm:h-[600px] bg-blue-600/10 blur-[80px] sm:blur-[120px] rounded-full" />
         <div className="absolute top-0 left-0 right-0 bottom-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 mix-blend-overlay" />
         <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:40px_40px] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)]" />
       </div>
 
-      {/* Navigation */}
       <nav className="fixed top-0 w-full p-4 md:p-6 flex justify-between items-center max-w-7xl z-50 backdrop-blur-md bg-[#0a0a0a]/50 border-b border-white/[0.05]">
         <div className="flex items-center gap-2 font-bold text-lg md:text-xl tracking-tighter">
           <div className="bg-blue-600 p-1.5 rounded-lg shadow-[0_0_15px_rgba(37,99,235,0.4)]">
@@ -125,12 +117,11 @@ export default function LandingPage() {
         </div>
       </nav>
 
-      {/* Hero Section */}
       <main className="relative z-10 text-center px-4 md:px-6 pt-24 md:pt-48 pb-20 w-full">
         <motion.div
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8, base: [0.16, 1, 0.3, 1] }}
+          transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
         >
           <motion.div 
             whileHover={{ scale: 1.05 }}
@@ -164,7 +155,6 @@ export default function LandingPage() {
           </div>
         </motion.div>
 
-        {/* Marketing Section: Emergent Risk Analysis */}
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           whileInView={{ opacity: 1, scale: 1 }}
@@ -232,7 +222,6 @@ export default function LandingPage() {
           </div>
         </motion.div>
 
-        {/* Feature Grid */}
         <motion.div 
           variants={containerVariants}
           initial="hidden"
@@ -273,7 +262,6 @@ export default function LandingPage() {
         <p className="text-center md:text-right">© 2026 YouPrompt AI. All rights reserved.</p>
       </footer>
 
-      {/* Separated Demo Modal Component */}
       <DemoModal isOpen={isDemoOpen} onClose={() => setIsDemoOpen(false)} />
     </div>
   );
