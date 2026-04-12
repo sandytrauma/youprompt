@@ -47,7 +47,7 @@ export async function initiatePhonePePayment(amount: number, userId: string, pla
     if (!token) return { error: "Authentication failed. Check server logs." };
 
     const merchantId = process.env.PHONEPE_MERCHANT_ID || "PGTESTPAYUAT";
-    const rawBaseUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
+    const rawBaseUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000" || "https://youprompt.vercel.app";
     const baseUrl = rawBaseUrl.replace(/\/+$/, ""); 
     
     // Alphanumeric Transaction ID
