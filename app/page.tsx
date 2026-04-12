@@ -8,8 +8,8 @@ import DemoModal from "./components/ViewDemo";
 
 /**
  * ScrambledRain Component
- * Vertical shower where characters start blurred/faded at the top
- * and sharpen as they reach the middle and bottom.
+ * Vertical shower with stable, non-bright colors.
+ * Characters fade in from top and remain at a constant, soft opacity.
  */
 function ScrambledRain() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -29,34 +29,25 @@ function ScrambledRain() {
     const drops: number[] = new Array(columns).fill(0);
 
     const draw = () => {
-      // Create trailing effect
+      // Stable background refresh
       ctx.fillStyle = "rgba(10, 10, 10, 0.15)";
       ctx.fillRect(0, 0, width, height);
 
+      // Set a stable, subtle blue (no shadows or glow)
+      ctx.font = `${fontSize}px monospace`;
+      
       for (let i = 0; i < drops.length; i++) {
         const text = characters.charAt(Math.floor(Math.random() * characters.length));
         const x = i * fontSize;
         const y = drops[i] * fontSize;
 
-        // Calculate opacity based on vertical position
-        // Top (0) is faint/blurred, Middle/Bottom (height) is sharp/bright
-        const progress = y / height;
-        const opacity = Math.min(progress + 0.1, 0.4); // Max opacity 0.4 for background vibe
+        // Calculate a smooth alpha that is stable once it leaves the very top
+        const opacity = Math.min((y / height) * 0.3, 0.2); 
         
         ctx.fillStyle = `rgba(37, 99, 235, ${opacity})`;
-        ctx.font = `${fontSize}px monospace`;
-        
-        // Add a slight "glow" to the sharper bottom elements
-        if (progress > 0.5) {
-          ctx.shadowBlur = 5;
-          ctx.shadowColor = "rgba(37, 99, 235, 0.5)";
-        } else {
-          ctx.shadowBlur = 0;
-        }
-
         ctx.fillText(text, x, y);
 
-        // Reset drop to top randomly
+        // Reset drop to top
         if (y > height && Math.random() > 0.975) {
           drops[i] = 0;
         }
@@ -139,7 +130,7 @@ export default function LandingPage() {
         <motion.div
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
+          transition={{ duration: 0.8, base: [0.16, 1, 0.3, 1] }}
         >
           <motion.div 
             whileHover={{ scale: 1.05 }}
