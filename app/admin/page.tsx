@@ -9,6 +9,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import { AdminUserActions } from "../components/AdminUserActions";
 
 export default async function AdminDashboard() {
   // 1. Production Security Guard
@@ -17,20 +18,20 @@ export default async function AdminDashboard() {
     redirect("/playground");
   }
 
-  // 2. Data Fetching
-  // Fetch users with their credit counts
+  // 2. Data Fetching (All variables defined here)
   const allUsers = await db.select().from(users).orderBy(desc(users.createdAt));
   
-  // Stats Aggregation
   const totalInquiries = await db.select({ value: count() }).from(inquiries);
   
-  // Calculate Global Credits (Sum of all user credits)
   const globalCreditsResult = await db.select({ 
     sum: sql<number>`sum(${users.credits})` 
   }).from(users);
   const globalCredits = globalCreditsResult[0]?.sum || 0;
 
-  // Fetching recent tasks with inquiry titles for the activity feed
+  const revenueEstimate = await db.select({
+    total: sql<number>`count(*) * 15` 
+  }).from(users);
+
   const recentTasks = await db.query.tasks.findMany({
     limit: 8,
     orderBy: [desc(tasks.createdAt)],
@@ -72,7 +73,7 @@ export default async function AdminDashboard() {
           <StatCard 
             icon={<FileText className="text-purple-500" />} 
             label="Total Vibes" 
-            value={totalInquiries[0].value} 
+            value={totalInquiries[0]?.value || 0} 
             description="AI roadmap generations"
           />
           <StatCard 
@@ -87,6 +88,37 @@ export default async function AdminDashboard() {
             value="Healthy" 
             description="Gemini-2.0-Flash operational"
           />
+        </div>
+
+        {/* Analytics & Danger Zone */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-10">
+          <div className="bg-gradient-to-br from-blue-900/20 to-transparent p-8 rounded-3xl border border-blue-500/10">
+    <h3 className="text-blue-400 font-bold text-xs uppercase tracking-[0.3em] mb-4">Growth Projection</h3>
+    <div className="flex items-baseline gap-4">
+      
+      <span className="text-5xl font-black text-white">
+        ₹{new Intl.NumberFormat('en-IN').format(revenueEstimate[0]?.total || 0)}
+      </span>
+      <span className="text-green-500 text-sm font-bold flex items-center gap-1">
+        <TrendingUp size={14} /> +12.5%
+      </span>
+    </div>
+    <p className="text-gray-400 text-[10px] mt-4 leading-relaxed uppercase tracking-tighter opacity-70">
+      Estimated Value (INR) based on credit consumption and user acquisition.
+    </p>
+  </div>
+          
+          <div className="bg-gradient-to-br from-red-900/10 to-transparent p-8 rounded-3xl border border-red-500/10">
+            <h3 className="text-red-400 font-bold text-xs uppercase tracking-[0.3em] mb-4">System Overrides</h3>
+            <div className="grid grid-cols-2 gap-4">
+              <button className="py-3 px-4 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 rounded-xl text-[10px] font-bold transition-all">
+                RESET GLOBAL RATE LIMITS
+              </button>
+              <button className="py-3 px-4 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-[10px] font-bold transition-all">
+                FLUSH CACHE STACK
+              </button>
+            </div>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -109,7 +141,7 @@ export default async function AdminDashboard() {
                     <th className="p-4 md:p-6 font-bold">Identity</th>
                     <th className="p-4 md:p-6 font-bold text-center">Vibe Balance</th>
                     <th className="p-4 md:p-6 font-bold">Access</th>
-                    <th className="p-4 md:p-6 font-bold text-right">Join Date</th>
+                    <th className="p-4 md:p-6 font-bold text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/5">
@@ -135,8 +167,8 @@ export default async function AdminDashboard() {
                           {user.role}
                         </span>
                       </td>
-                      <td className="p-4 md:p-6 text-gray-500 text-xs text-right font-mono">
-                        {user.createdAt ? new Date(user.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : '---'}
+                      <td className="p-4 md:p-6 text-right">
+                        <AdminUserActions userId={user.id} userName={user.name || "User"} />
                       </td>
                     </tr>
                   ))}

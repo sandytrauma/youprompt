@@ -7,11 +7,12 @@ export const users = pgTable("users", {
   email: text("email").unique().notNull(),
   password: text("password").notNull(), // Hashed with Bcrypt
 role: text("role").$type<"user" | "admin">().default("user"),
-
+image: text("image"),
 credits: integer("credits").default(5), // Initial free credits
 lastMerchantTransactionId: text("last_merchant_transaction_id"),
   plan: text("plan").$type<"free" | "builder" | "agency">().default("free"),
   phonepeCustomerId: text("phonepe_customer_id"), // Useful for linking payments
+  phone: text("phone"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -24,7 +25,7 @@ export const inquiries = pgTable("inquiries", {
 
 export const tasks = pgTable("tasks", {
   id: uuid("id").primaryKey().defaultRandom(),
-  inquiryId: uuid("inquiry_id").references(() => inquiries.id),
+  inquiryId: uuid("inquiry_id").references(() => inquiries.id, { onDelete: "cascade" }), 
   versionName: text("version_name").notNull(),
   // Storing the 7 steps: { objective, procedures[], prompt }
   steps: jsonb("steps").notNull(), 

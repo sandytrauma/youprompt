@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { signOut, useSession } from "next-auth/react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { 
   createNewVibe, 
   getVibeHistory, 
@@ -13,11 +13,13 @@ import {
   Loader2, Send, Cpu, Layers, RotateCcw, 
   Globe, ExternalLink, LogOut, ShieldCheck, 
   ChevronRight, Sparkles, ToyBrick, Zap,
-  AlertCircle, Menu, X, Copy, Check, PlusCircle
+  AlertCircle, Menu, X, Copy, Check, PlusCircle,
+  UserCog 
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { RiskPopup } from "../components/RiskPopup";
-import { toast } from "sonner"; // Assuming you use sonner or similar for toasts
+import { toast } from "sonner";
+import Link from "next/link";
 
 interface Step {
   objective: string;
@@ -25,9 +27,17 @@ interface Step {
   precisePrompt: string;
 }
 
+interface HistoryItem {
+  id: string;
+  title: string | null;
+  version?: number;
+  createdAt?: Date | null;
+}
+
 export default function Playground() {
   const { data: session, status, update } = useSession();
   const router = useRouter();
+  const searchParams = useSearchParams();
   
   // UI States
   const [activeTab, setActiveTab] = useState<"workflow" | "emergent">("workflow");
@@ -39,22 +49,45 @@ export default function Playground() {
   // Data States
   const [steps, setSteps] = useState<Step[]>([]);
   const [emergentContent, setEmergentContent] = useState<string>("");
-  const [history, setHistory] = useState<any[]>([]);
+  const [history, setHistory] = useState<HistoryItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [selectedStep, setSelectedStep] = useState<number | null>(null);
   const [currentInquiryId, setCurrentInquiryId] = useState<string | null>(null);
   const [currentVersion, setCurrentVersion] = useState<number>(1);
   const [promptInput, setPromptInput] = useState("");
-
   const [isRiskModalOpen, setIsRiskModalOpen] = useState(false);
 
   const isAdmin = session?.user?.role === "admin";
   const userCredits = session?.user?.credits ?? 0;
 
-  useEffect(() => { setMounted(true); }, []);
+  useEffect(() => {
+    setMounted(true);
+    if (searchParams.get("success") === "true") {
+      update();
+      toast.success("Credits Refilled!", { description: "Your balance has been updated." });
+    }
+  }, [searchParams, update]);
 
-  // Compiled Prompt logic
+  useEffect(() => {
+    async function loadHistory() {
+      if (status !== "authenticated") return;
+      try {
+        const data = await getAllUserInquiries();
+        if (data) setHistory(data as HistoryItem[]);
+      } catch (error) {
+        console.error("History fetch failed", error);
+      } finally {
+        setIsInitialLoad(false);
+      }
+    }
+    if (mounted) loadHistory();
+  }, [status, mounted]);
+
+  useEffect(() => {
+    document.body.style.overflow = isRiskModalOpen ? 'hidden' : 'unset';
+  }, [isRiskModalOpen]);
+
   const fullMasterPrompt = steps.length > 0 
     ? `FULL ARCHITECTURE ROADMAP (v${currentVersion}):\n\n` + 
       steps.map((s, i) => `STEP ${i + 1} - ${s.objective.toUpperCase()}:\n${s.precisePrompt}`).join("\n\n")
@@ -62,35 +95,16 @@ export default function Playground() {
 
   const handleCopyMasterPrompt = async () => {
     if (!fullMasterPrompt) return;
-    await navigator.clipboard.writeText(fullMasterPrompt);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    try {
+      await navigator.clipboard.writeText(fullMasterPrompt);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+      toast.success("Prompt Copied", { description: "Ready to paste into your AI tool." });
+    } catch (err) {
+      toast.error("Copy failed");
+    }
   };
 
-  // 1. Fetch History on Load
-  useEffect(() => {
-    async function loadHistory() {
-      try {
-        const data = await getAllUserInquiries();
-        if (data) setHistory(data);
-      } catch (error) {
-        console.error("History fetch failed", error);
-      } finally {
-        setIsInitialLoad(false);
-      }
-    }
-    if (status === "authenticated" && mounted) loadHistory();
-  }, [status, mounted]);
-
-  useEffect(() => {
-    if (isRiskModalOpen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = 'unset';
-    }
-  }, [isRiskModalOpen]);
-
-  // 2. Handle History Selection
   async function handleSelectHistory(id: string) {
     if (isLoading) return;
     setSelectedStep(null);
@@ -108,22 +122,21 @@ export default function Playground() {
       }
     } catch (error) {
       console.error("Failed to load vibe history", error);
+      toast.error("Could not load history");
     } finally {
       setIsLoading(false);
     }
   }
 
-  // 3. Handle Submission with Credit Check
   async function handleSubmit(e?: React.FormEvent) {
     if (e) e.preventDefault();
     if (!promptInput.trim() || isLoading) return;
 
-    // SaaS Credit Blocker
     if (userCredits <= 0 && !isAdmin) {
       toast.error("Insufficient Credits", {
-        description: "You've reached your free limit. Please buy credits to continue.",
+        description: "Please refill your credits to continue generating vibes.",
         action: {
-          label: "Buy Credits",
+          label: "Refill",
           onClick: () => router.push("/refill"),
         },
       });
@@ -137,9 +150,7 @@ export default function Playground() {
         : await createNewVibe(promptInput);
       
       if (result.success) {
-        // REFRESH SESSION: This updates the credit count in the UI
         await update(); 
-        
         setSteps(result.steps as Step[]);
         setEmergentContent(result.emergentContent || "");
         setCurrentVersion(result.version ?? (currentInquiryId ? currentVersion + 1 : 1));
@@ -147,23 +158,21 @@ export default function Playground() {
         if (!currentInquiryId) {
           setCurrentInquiryId(result.inquiryId ?? null);
           const updatedHistory = await getAllUserInquiries();
-          setHistory(updatedHistory);
+          setHistory(updatedHistory as HistoryItem[]);
         }
         
         setPromptInput("");
         setSelectedStep(0);
 
         if (result.emergentContent) {
-          setTimeout(() => {
-            setIsRiskModalOpen(true);
-          }, 500);
+          setTimeout(() => setIsRiskModalOpen(true), 500);
         }
       } else if (result.error === "INSUFFICIENT_CREDITS") {
         router.push("/refill");
       }
     } catch (error) {
       console.error("Submission failed", error);
-      toast.error("Vibe Generation Failed", { description: "Something went wrong with the AI." });
+      toast.error("Generation Failed");
     } finally {
       setIsLoading(false);
     }
@@ -180,14 +189,13 @@ export default function Playground() {
   const platforms = [
     { name: "Gemini", url: "https://aistudio.google.com/", color: "text-blue-400" },
     { name: "v0.dev", url: "https://v0.dev/", color: "text-pink-400" },
-    { name: "Bolt.new", url: "https://bolt.new/?ref=youprompt", color: "text-orange-400" },
+    { name: "Bolt.new", url: "https://bolt.new/", color: "text-orange-400" },
     { name: "Claude", url: "https://claude.ai/", color: "text-orange-200" }
   ];
 
   return (
     <div className="flex h-screen bg-[#0a0a0a] text-white overflow-hidden font-[family-name:var(--font-geist-sans)] relative">
       
-      {/* MOBILE HEADER */}
       <header className="md:hidden fixed top-0 left-0 right-0 h-16 bg-[#111111]/80 backdrop-blur-md border-b border-white/5 flex items-center justify-between px-4 z-[50]">
         <button onClick={() => setIsLeftSidebarOpen(true)} className="p-2 hover:bg-white/5 rounded-lg text-gray-400">
           <Menu size={20} />
@@ -200,7 +208,6 @@ export default function Playground() {
         </button>
       </header>
 
-      {/* LEFT SIDEBAR */}
       <aside className={`
         fixed inset-y-0 left-0 z-[100] w-72 bg-[#111111] border-r border-white/5 flex flex-col p-4 transition-transform duration-300 transform
         ${isLeftSidebarOpen ? "translate-x-0" : "-translate-x-full"}
@@ -213,46 +220,63 @@ export default function Playground() {
           </div>
           <button onClick={() => setIsLeftSidebarOpen(false)} className="md:hidden p-2 text-gray-500"><X size={20}/></button>
         </div>
-        
-        {/* Credit Indicator Card */}
+    
         <div className="mb-6 p-4 rounded-2xl bg-gradient-to-br from-blue-600/20 to-purple-600/10 border border-blue-500/20 shadow-inner">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-[10px] font-bold text-blue-400 uppercase tracking-widest">Available Vibes</span>
-            <Zap size={12} className="text-blue-400" />
+            <span className="text-[10px] font-bold text-blue-400 uppercase tracking-widest">
+              {isAdmin ? "System Access" : "Remaining Credits"}
+            </span>
+            <Zap size={12} className={isAdmin ? "text-yellow-400" : "text-blue-400"} />
           </div>
           <div className="flex items-end gap-1">
-            <span className="text-2xl font-black text-white">{userCredits}</span>
-            <span className="text-xs text-gray-500 mb-1">/{session?.user?.plan === 'free' ? '5' : '∞'}</span>
+            {isAdmin ? (
+              <span className="text-2xl font-black text-white">Unlimited</span>
+            ) : (
+              <>
+                <span className="text-2xl font-black text-white">{userCredits}</span>
+                <span className="text-[10px] text-gray-500 mb-1 uppercase tracking-tighter ml-1">
+                  {session?.user?.plan || 'Free'} Plan
+                </span>
+              </>
+            )}
           </div>
           <button 
             onClick={() => router.push("/refill")}
-            className="mt-3 w-full py-2 bg-white/5 hover:bg-white/10 rounded-lg text-[10px] font-bold uppercase tracking-tighter flex items-center justify-center gap-2 transition-all"
+            className="mt-3 w-full py-2 bg-white/5 hover:bg-white/10 rounded-lg text-[10px] font-bold uppercase tracking-tighter flex items-center justify-center gap-2 transition-all group"
           >
-            <PlusCircle size={12} /> Refill Credits
+            <PlusCircle size={12} className="group-hover:text-blue-400 transition-colors" /> Buy More Credits
           </button>
         </div>
 
-        {isAdmin && (
-          <div className="flex p-1 bg-black/40 rounded-xl mb-6 border border-white/5">
-            <button className="flex-1 flex items-center justify-center gap-2 py-2 text-[10px] font-bold uppercase tracking-tight rounded-lg bg-blue-600/10 text-blue-400 border border-blue-500/20">
-              <Layers size={12} /> Playground
+        {/* Top Navigation */}
+        <div className="space-y-1 mb-6">
+          <button 
+            onClick={() => router.push("/playground")}
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl bg-blue-600/10 text-blue-400 border border-blue-500/20 text-[11px] font-bold uppercase tracking-wider transition-all"
+          >
+            <Layers size={14} /> Playground
+          </button>
+          
+          {isAdmin && (
+            <button 
+              onClick={() => router.push("/admin")}
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-gray-500 hover:bg-white/5 hover:text-white text-[11px] font-bold uppercase tracking-wider transition-all group"
+            >
+              <ShieldCheck size={14} className="group-hover:text-red-400 transition-colors" /> Admin Console
             </button>
-            <button onClick={() => router.push("/admin")} className="flex-1 flex items-center justify-center gap-2 py-2 text-[10px] font-bold uppercase tracking-tight rounded-lg text-gray-500 hover:text-white transition-all">
-              <ShieldCheck size={12} /> Admin
-            </button>
-          </div>
-        )}
+          )}
+        </div>
 
         <button 
           onClick={() => { setCurrentInquiryId(null); setSteps([]); setEmergentContent(""); setPromptInput(""); setSelectedStep(null); setIsLeftSidebarOpen(false); }}
-          className="mb-6 flex items-center justify-center gap-2 w-full p-3 rounded-xl bg-white text-black font-semibold text-sm hover:scale-[1.02] active:scale-95 transition-all shadow-lg"
+          className="mb-6 flex items-center justify-center gap-2 w-full p-3 rounded-xl bg-white text-black font-bold text-sm hover:scale-[1.02] active:scale-95 transition-all shadow-lg"
         >
-          <Layers size={16} /> New Vibe
+          <PlusCircle size={16} /> New Vibe
         </button>
 
         <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-widest px-2 mb-4">History</h2>
         <div className="flex-1 space-y-1 overflow-y-auto pr-2 custom-scrollbar">
-          {history.map((item) => (
+          {history.length > 0 ? history.map((item) => (
             <button 
               key={item.id}
               onClick={() => handleSelectHistory(item.id)}
@@ -264,34 +288,48 @@ export default function Playground() {
             >
               {item.title || "Untitled Vibe"}
             </button>
-          ))}
+          )) : (
+            <p className="text-[10px] text-gray-600 px-2 italic">No history yet</p>
+          )}
         </div>
 
-        <div className="mt-auto pt-4 border-t border-white/5">
-          <div className="flex items-center gap-3 px-2 mb-4">
-            <div className="h-8 w-8 rounded-full bg-gradient-to-tr from-blue-600 to-purple-600 flex items-center justify-center text-[10px] font-bold shrink-0">
-              {session?.user?.name?.[0] || "U"}
+        {/* Footer User Section - Settings Integrated Here */}
+        <div className="mt-auto pt-4 border-t border-white/5 space-y-2">
+          <Link 
+            href="/profile" 
+            className="flex items-center gap-3 px-2 py-3 rounded-xl hover:bg-white/5 transition-all group border border-transparent hover:border-white/10"
+          >
+            <div className="h-10 w-10 rounded-full bg-gradient-to-tr from-blue-600 to-purple-600 flex items-center justify-center text-[10px] font-bold shrink-0 overflow-hidden border border-white/10">
+              {session?.user?.image ? (
+                <img src={session.user.image} alt="Avatar" className="w-full h-full object-cover" />
+              ) : (
+                session?.user?.name?.[0]?.toUpperCase() || "U"
+              )}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-xs font-semibold truncate">{session?.user?.name}</p>
-              <p className="text-[10px] text-gray-500 uppercase tracking-tighter">{session?.user?.plan} plan</p>
+              <p className="text-[11px] font-bold truncate group-hover:text-blue-400 transition-colors">{session?.user?.name}</p>
+              <div className="flex items-center gap-1">
+                 <UserCog size={10} className="text-gray-500 group-hover:text-purple-400 transition-colors" />
+                 <p className="text-[9px] text-gray-500 uppercase tracking-tighter truncate">Manage Profile</p>
+              </div>
             </div>
-          </div>
-          <button onClick={() => signOut({ callbackUrl: "/login" })} className="flex items-center justify-between w-full p-3 rounded-xl bg-white/5 border border-white/5 text-gray-400 hover:text-red-400 transition-all text-xs font-medium">
-            <div className="flex items-center gap-2"><LogOut size={14} /> Sign Out</div>
+            <ChevronRight size={12} className="text-gray-600 group-hover:text-white transition-all group-hover:translate-x-0.5" />
+          </Link>
+          
+          <button onClick={() => signOut({ callbackUrl: "/login" })} className="flex items-center justify-between w-full p-3 rounded-xl bg-white/5 border border-white/5 text-gray-400 hover:text-red-400 transition-all text-xs font-medium group">
+            <div className="flex items-center gap-2"><LogOut size={14} className="group-hover:rotate-12 transition-transform" /> Sign Out</div>
           </button>
         </div>
       </aside>
 
-      {/* CENTER: Main Canvas */}
       <main className="flex-1 flex flex-col items-center relative overflow-hidden bg-[#0d0d0d] pt-16 md:pt-0">
         <div className="w-full max-w-2xl flex-1 overflow-y-auto py-8 md:py-12 px-4 md:px-6 pb-32 space-y-8 custom-scrollbar">
           <AnimatePresence mode="wait">
             {steps.length > 0 ? (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6 md:space-y-8">
+              <motion.div key="steps-container" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6 md:space-y-8">
                 {steps.map((step, i) => (
                   <motion.div 
-                    key={i}
+                    key={`${currentInquiryId}-${i}`}
                     onClick={() => { setSelectedStep(i); if(window.innerWidth < 768) setIsRightSidebarOpen(true); }}
                     className={`p-5 md:p-6 rounded-3xl border transition-all cursor-pointer ${
                       selectedStep === i ? "bg-[#161617] border-blue-500/50" : "bg-transparent border-white/5 hover:border-white/20"
@@ -317,15 +355,18 @@ export default function Playground() {
           </AnimatePresence>
         </div>
 
-        {/* Floating Input Area */}
         <div className="w-full max-w-2xl absolute bottom-6 md:bottom-8 px-4 md:px-6 z-[40]">
           <form onSubmit={handleSubmit} className="relative group">
             <input 
               value={promptInput}
               onChange={(e) => setPromptInput(e.target.value)}
-              placeholder={userCredits <= 0 && !isAdmin ? "Credits depleted. Refill to continue..." : (currentInquiryId ? "Suggest changes..." : "Describe your vibe...")}
+              placeholder={
+                (userCredits <= 0 && !isAdmin) 
+                ? "Credits depleted. Refill to continue..." 
+                : (currentInquiryId ? "Suggest changes to this architecture..." : "Describe your app or workflow vibe...")
+              }
               className={`w-full bg-[#161617] rounded-full py-4 md:py-5 px-6 md:px-8 pr-14 md:pr-16 outline-none border transition-all shadow-2xl text-sm ${
-                userCredits <= 0 && !isAdmin ? "border-red-500/30 text-gray-600 cursor-not-allowed" : "border-white/10 focus:border-blue-500/50"
+                (userCredits <= 0 && !isAdmin) ? "border-red-500/30 text-gray-600 cursor-not-allowed" : "border-white/10 focus:border-blue-500/50"
               }`}
               disabled={isLoading || (userCredits <= 0 && !isAdmin)}
             />
@@ -333,7 +374,7 @@ export default function Playground() {
               type="submit" 
               disabled={isLoading || !promptInput.trim() || (userCredits <= 0 && !isAdmin)} 
               className={`absolute right-2 md:right-3 top-1/2 -translate-y-1/2 p-2.5 md:p-3 rounded-full transition-all ${
-                userCredits <= 0 && !isAdmin ? "bg-gray-800 text-gray-500" : "bg-white text-black hover:scale-105"
+                (userCredits <= 0 && !isAdmin) ? "bg-gray-800 text-gray-500" : "bg-white text-black hover:scale-105 active:scale-95"
               }`}
             >
               {isLoading ? <Loader2 className="animate-spin" size={18} /> : currentInquiryId ? <RotateCcw size={18} /> : <Send size={18} />}
@@ -342,7 +383,6 @@ export default function Playground() {
         </div>
       </main>
 
-      {/* RIGHT SIDEBAR */}
       <aside className={`
         fixed inset-y-0 right-0 z-[100] w-80 bg-[#111111] border-l border-white/5 flex flex-col transition-transform duration-300 transform
         ${isRightSidebarOpen ? "translate-x-0" : "translate-x-full"}
@@ -353,7 +393,6 @@ export default function Playground() {
             <button onClick={() => setIsRightSidebarOpen(false)} className="p-2 text-gray-500"><X size={20}/></button>
         </div>
 
-        {/* INTEGRATED MASTER PROMPT SECTION */}
         <div className="p-4 border-b border-white/5 bg-white/[0.02]">
             <div className="flex items-center justify-between mb-3 px-2">
               <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Master Workflow</span>
@@ -363,7 +402,7 @@ export default function Playground() {
                  className={`flex items-center gap-1.5 text-[10px] font-bold px-3 py-1 rounded-lg transition-all ${copied ? 'bg-green-600/20 text-green-400' : 'bg-blue-600 text-white hover:bg-blue-700'}`}
                 >
                   {copied ? <Check size={10} /> : <Copy size={10} />}
-                  {copied ? "Copied" : "Copy Full Prompt"}
+                  {copied ? "Copied" : "Copy Full"}
                 </button>
               )}
             </div>
@@ -371,23 +410,16 @@ export default function Playground() {
                <p className="text-[10px] font-mono text-gray-500 leading-relaxed italic">
                  {steps.length > 0 
                    ? fullMasterPrompt.substring(0, 150) + "..."
-                   : "Start a vibe to compile your master prompt block here."}
+                   : "Generate a vibe to see the full architectural prompt block here."}
                </p>
             </div>
         </div>
 
-        {/* Tabs Header */}
         <div className="flex p-2 gap-2 bg-black/20 border-b border-white/5">
-          <button 
-            onClick={() => setActiveTab("workflow")}
-            className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all ${activeTab === 'workflow' ? 'bg-white/5 text-white shadow-inner border border-white/10' : 'text-gray-500 hover:text-gray-300'}`}
-          >
+          <button onClick={() => setActiveTab("workflow")} className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all ${activeTab === 'workflow' ? 'bg-white/5 text-white border border-white/10' : 'text-gray-500 hover:text-gray-300'}`}>
             <ToyBrick size={14} /> Tools
           </button>
-          <button 
-            onClick={() => setActiveTab("emergent")}
-            className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all ${activeTab === 'emergent' ? 'bg-blue-600/10 text-blue-400 border border-blue-500/20' : 'text-gray-500 hover:text-gray-300'}`}
-          >
+          <button onClick={() => setActiveTab("emergent")} className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all ${activeTab === 'emergent' ? 'bg-blue-600/10 text-blue-400 border border-blue-500/20' : 'text-gray-500 hover:text-gray-300'}`}>
             <Sparkles size={14} /> Emergent
           </button>
         </div>
@@ -395,14 +427,11 @@ export default function Playground() {
         <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
           <AnimatePresence mode="wait">
             {activeTab === "workflow" ? (
-              <motion.div key="workflow" initial={{ opacity: 0, x: 5 }} animate={{ opacity: 1, x: 0 }} className="space-y-6">
-                <h2 className="hidden md:block text-[10px] font-bold text-gray-500 uppercase tracking-widest">Platform Integration</h2>
+              <motion.div key="tab-workflow" initial={{ opacity: 0, x: 5 }} animate={{ opacity: 1, x: 0 }} className="space-y-6">
                 {selectedStep !== null ? (
                   <div className="space-y-4">
                     <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/5">
-                      <p className="text-xs text-gray-400 leading-relaxed italic">
-                        Step {selectedStep + 1} is ready. Launch a platform to begin:
-                      </p>
+                      <p className="text-xs text-gray-400 leading-relaxed italic">Step {selectedStep + 1} integration links:</p>
                     </div>
                     {platforms.map((p) => (
                       <a key={p.name} href={p.url} target="_blank" rel="noopener noreferrer" className="flex items-center justify-between p-4 rounded-2xl bg-white/[0.03] border border-white/5 hover:border-blue-500/30 transition-all group">
@@ -422,20 +451,10 @@ export default function Playground() {
                 )}
               </motion.div>
             ) : (
-              <motion.div key="emergent" initial={{ opacity: 0, x: 5 }} animate={{ opacity: 1, x: 0 }} className="space-y-6">
-                <div className="p-5 rounded-3xl bg-blue-600/5 border border-blue-500/20 relative overflow-hidden">
-                  <div className="absolute top-0 right-0 p-4 opacity-10"><Zap size={40} className="text-blue-500" /></div>
+              <motion.div key="tab-emergent" initial={{ opacity: 0, x: 5 }} animate={{ opacity: 1, x: 0 }} className="space-y-6">
+                <div className="p-5 rounded-3xl bg-blue-600/5 border border-blue-500/20 relative overflow-hidden shadow-inner">
                   <h3 className="text-blue-400 font-bold text-[10px] uppercase tracking-widest mb-3">Neural Analysis</h3>
-                  <p className="text-gray-300 text-sm leading-relaxed">
-                    {emergentContent || "Awaiting input to generate intelligence."}
-                  </p>
-                </div>
-                
-                <div className="space-y-3">
-                  <h4 className="text-[10px] font-bold text-gray-600 uppercase tracking-widest">Heuristic Insights</h4>
-                  <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/5 text-[11px] text-gray-500 leading-relaxed">
-                    Emergent AI monitors (V{currentVersion}) to suggest invisible optimizations.
-                  </div>
+                  <p className="text-gray-300 text-sm leading-relaxed">{emergentContent || "Awaiting architectural generation..."}</p>
                 </div>
               </motion.div>
             )}
@@ -443,19 +462,11 @@ export default function Playground() {
         </div>
       </aside>
 
-      {/* Backdrop for Mobile Drawers */}
       {(isLeftSidebarOpen || isRightSidebarOpen) && (
-        <div 
-          onClick={() => { setIsLeftSidebarOpen(false); setIsRightSidebarOpen(false); }}
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[90] md:hidden"
-        />
+        <div onClick={() => { setIsLeftSidebarOpen(false); setIsRightSidebarOpen(false); }} className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[90] md:hidden" />
       )}
 
-      <RiskPopup 
-        isOpen={isRiskModalOpen} 
-        onClose={() => setIsRiskModalOpen(false)} 
-        content={emergentContent} 
-      />
+      <RiskPopup isOpen={isRiskModalOpen} onClose={() => setIsRiskModalOpen(false)} content={emergentContent} />
     </div>
   );
 }
