@@ -6,7 +6,8 @@ import { useSession } from "next-auth/react";
 import { motion } from "framer-motion";
 import { Zap, ArrowRight, ShieldCheck, Sparkles, Loader2 } from "lucide-react";
 import { toast } from "react-hot-toast";
-import { initiatePhonePePayment } from "@/app/api/payments/phonepe/status/route";
+// 🔥 Updated import to point to your new Server Action file
+import { initiatePhonePePayment } from "@/app/actions/payments";
 
 const creditBundles = [
   { id: "basic", credits: 50, price: 199, label: "Starter" },
@@ -19,7 +20,9 @@ function RefillContent() {
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const searchParams = useSearchParams();
 
-  // Handle Toast notifications based on URL parameters from the callback
+  /**
+   * Handle URL feedback from the callback redirect
+   */
   useEffect(() => {
     const error = searchParams.get("error");
     const success = searchParams.get("success");
@@ -28,13 +31,15 @@ function RefillContent() {
       toast.error("Payment failed or was cancelled.");
     } else if (error === "invalid_user") {
       toast.error("Session error. Please log in again.");
+    } else if (error === "db_error") {
+      toast.error("Database update failed. Contact support.");
     } else if (success === "true") {
       toast.success("Credits added successfully!");
     }
   }, [searchParams]);
 
   const handleRefill = async (bundle: typeof creditBundles[0]) => {
-    // 1. Check if user is authenticated via NextAuth
+    // 1. Validation: Ensure user is logged in
     if (status === "unauthenticated" || !session?.user?.id) {
       toast.error("Please log in to purchase credits.");
       return;
@@ -45,13 +50,13 @@ function RefillContent() {
     try {
       setLoadingId(bundle.id);
       
-      // 2. Call the Server Action with the real UUID from session
+      // 2. Trigger the Server Action
       const result = await initiatePhonePePayment(bundle.price, userId, bundle.id);
       
       if (result.error) {
         toast.error(result.error);
       } else if (result.url) {
-        // 3. Redirect to PhonePe Secure Hosted Page
+        // 3. Redirect to the secure PhonePe checkout page
         window.location.href = result.url;
       }
     } catch (err) {
@@ -138,7 +143,7 @@ function RefillContent() {
   );
 }
 
-// Next.js requires useSearchParams to be wrapped in a Suspense boundary
+// Wrapping in Suspense is mandatory for useSearchParams() in Next.js Client Components
 export default function RefillPage() {
   return (
     <Suspense fallback={
