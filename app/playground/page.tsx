@@ -33,6 +33,7 @@ interface HistoryItem {
   version?: number;
   createdAt?: Date | null;
 }
+export const dynamic = "force-dynamic";
 
 export default function Playground() {
   const { data: session, status, update } = useSession();
