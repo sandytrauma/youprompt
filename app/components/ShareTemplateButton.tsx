@@ -1,13 +1,7 @@
 "use client";
-
 import { Share2 } from "lucide-react";
 
-interface ShareTemplateButtonProps {
-  vibeId: string;
-  vibeTitle: string;
-}
-
-export function ShareTemplateButton({ vibeId, vibeTitle }: ShareTemplateButtonProps) {
+export function ShareTemplateButton({ vibeId, vibeTitle }: { vibeId: string, vibeTitle: string }) {
   const handleShare = () => {
     const shareUrl = `${window.location.origin}/explore/${vibeId}`;
     if (navigator.share) {
@@ -22,12 +16,17 @@ export function ShareTemplateButton({ vibeId, vibeTitle }: ShareTemplateButtonPr
   };
 
   return (
-    <div className="absolute right-8 top-10 opacity-0 group-hover:opacity-100 transition-opacity">
+    /* Change: 
+       1. Added 'lg:opacity-0' -> Hidden by default only on large screens.
+       2. Added 'opacity-100' -> Visible by default on mobile.
+       3. Adjusted positioning for mobile (top-4 right-4).
+    */
+    <div className="absolute right-4 top-4 lg:right-8 lg:top-10 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity z-10">
       <button 
         onClick={handleShare}
-        className="flex items-center gap-2 bg-white/10 hover:bg-white text-white hover:text-black px-4 py-2 rounded-full text-[9px] font-black uppercase tracking-tighter transition-all"
+        className="flex items-center gap-2 bg-white/10 hover:bg-white text-white hover:text-black px-3 py-2 lg:px-4 lg:py-2 rounded-full text-[8px] lg:text-[9px] font-black uppercase tracking-tighter transition-all backdrop-blur-md border border-white/5"
       >
-        <Share2 size={12} /> Share Template
+        <Share2 size={12} /> <span className="hidden xs:inline">Share Template</span>
       </button>
     </div>
   );
