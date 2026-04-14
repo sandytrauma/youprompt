@@ -22,7 +22,7 @@ import { generateVibeWorkflow } from "@/lib/gemini";
 import { authOptions } from "@/lib/auth";
 import { getServerSession } from "next-auth";
 import { revalidatePath } from "next/cache";
-import { desc, eq, sql } from "drizzle-orm";
+import { desc, eq, or, sql } from "drizzle-orm";
 
 // 1 Credit per generation/edit
 const VIBE_COST = 1;
@@ -174,32 +174,28 @@ export async function getVibeHistory(inquiryId: string) {
   }
 }
 
-export async function getPublicVibe(inquiryId: string) {
+
+
+export async function getPublicVibe(id: string) {
   try {
     const result = await db.query.tasks.findFirst({
-      where: eq(tasks.inquiryId, inquiryId),
+      // Try matching the inquiryId OR the taskId itself
+      where: or(eq(tasks.inquiryId, id), eq(tasks.id, id)), 
       orderBy: [desc(tasks.version)],
       with: {
         inquiry: true, 
       },
     });
 
-    // 1. Check if the task exists
-    // 2. Check if the linked inquiry exists to satisfy the "possibly null" error
-    if (!result || !result.inquiry) {
-      return null;
-    }
+    if (!result || !result.inquiry) return null;
 
     return {
-      id: result.id,
-      title: result.inquiry.title, // TypeScript is now happy because we checked it above
-      steps: result.steps, 
-      emergentContent: result.emergentContent,
+      title: result.inquiry.title,
+      steps: result.steps,
       version: result.version,
       createdAt: result.createdAt,
     };
   } catch (error) {
-    console.error("Error in getPublicVibe:", error);
     return null;
   }
 }
