@@ -74,6 +74,7 @@ export const authOptions: NextAuthOptions = {
           id: user.id,
           name: user.name,
           email: user.email,
+          image: user.image, // Ensure image is returned from DB
           role: user.role as "user" | "admin",
           credits: user.credits ?? 0,
           plan: (user.plan as any) || "free",
@@ -86,15 +87,21 @@ export const authOptions: NextAuthOptions = {
       // Initial sign in
       if (user) {
         token.id = user.id;
+        token.name = user.name;
+        token.email = user.email;
+        token.picture = user.image; // NextAuth JWT uses 'picture' for the image URL
         token.role = user.role;
         token.credits = user.credits;
         token.plan = user.plan;
       }
 
-      // HANDLE SESSION UPDATE (Crucial for SaaS)
-      // This allows you to update the session UI after a user buys credits
-      if (trigger === "update" && session) {
-        return { ...token, ...session.user };
+      // HANDLE SESSION UPDATE (Global Sync)
+      if (trigger === "update" && session?.user) {
+        // Map incoming session.user properties to the token
+        if (session.user.name) token.name = session.user.name;
+        if (session.user.image) token.picture = session.user.image;
+        if (session.user.credits !== undefined) token.credits = session.user.credits;
+        if (session.user.plan) token.plan = session.user.plan;
       }
 
       return token;
@@ -102,6 +109,9 @@ export const authOptions: NextAuthOptions = {
     async session({ session, token }) {
       if (session.user) {
         session.user.id = token.id;
+        session.user.name = token.name;
+        session.user.email = token.email;
+        session.user.image = token.picture as string; // Pass the updated picture back to the UI
         session.user.role = token.role;
         session.user.credits = token.credits;
         session.user.plan = token.plan;

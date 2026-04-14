@@ -72,8 +72,8 @@ export const comments = pgTable("comments", {
 // 3. Likes Table
 export const likes = pgTable("likes", {
   // CHANGED text to uuid
-  userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }),
-  vibeId: uuid("vibe_id").references(() => vibes.id, { onDelete: "cascade" }),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  vibeId: uuid("vibe_id").notNull().references(() => vibes.id, { onDelete: "cascade" }),
 }, (t) => ({
   pk: primaryKey({ columns: [t.userId, t.vibeId] }),
 }));
@@ -81,10 +81,29 @@ export const likes = pgTable("likes", {
 // 4. Subscriptions
 export const subscriptions = pgTable("subscriptions", {
   // CHANGED text to uuid
-  followerId: uuid("follower_id").references(() => users.id, { onDelete: "cascade" }),
-  followingId: uuid("following_id").references(() => users.id, { onDelete: "cascade" }),
+  followerId: uuid("follower_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  followingId: uuid("following_id").notNull().references(() => users.id, { onDelete: "cascade" }),
 }, (t) => ({
   pk: primaryKey({ columns: [t.followerId, t.followingId] }),
+}));
+
+export const documents = pgTable("documents", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  title: text("title").notNull(), // e.g., "Drizzle Schema", "Tailwind Config"
+  content: text("content").notNull(), // The actual code or specs
+  category: text("category").$type<"technical" | "branding" | "general">().default("technical"),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const documentsRelations = relations(documents, ({ one }) => ({
+  user: one(users, {
+    fields: [documents.userId],
+    references: [users.id],
+  }),
 }));
 
 
@@ -114,6 +133,7 @@ export const usersRelations = relations(users, ({ many }) => ({
   likes: many(likes),
   followers: many(subscriptions, { relationName: "follower" }), 
   following: many(subscriptions, { relationName: "following" }),
+  documents: many(documents),
 }));
 
 // 2. Vibes Relations

@@ -32,13 +32,14 @@ import {
   ChevronRight, Sparkles, ToyBrick, Zap,
   Menu, X, Copy, Check, PlusCircle,
   Settings, Terminal, Share2, CreditCard,
-  User, ShieldAlert, LayoutDashboard, ExternalLink
+  User, ShieldAlert, LayoutDashboard, ExternalLink, Box, Database
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { RiskPopup } from "../components/RiskPopup";
 import { toast } from "sonner";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { saveToCodeVault, getCodeVaultDocs } from "../actions/vault";
 
 interface Step {
   objective: string;
@@ -54,6 +55,65 @@ interface HistoryItem {
 }
 
 export const dynamic = "force-dynamic";
+
+// --- VIBE BRIDGE COMPONENT ---
+function VibeBridge({ fullPrompt, title }: { fullPrompt: string; title: string }) {
+  const shipToTool = async (url: string, toolName: string) => {
+    if (!fullPrompt) {
+      toast.error("No vibe generated yet!");
+      return;
+    }
+
+    await navigator.clipboard.writeText(fullPrompt);
+    
+    const vaultRes = await saveToCodeVault({
+      title: title || "New Technical Blueprint",
+      content: fullPrompt,
+      category: "technical"
+    });
+
+    if (vaultRes.success) {
+      toast.success("Blueprint Secured", {
+        description: `Saved to Vault & opening ${toolName}`,
+        icon: <ShieldCheck size={14} className="text-green-500" />
+      });
+    } else {
+      console.error("Vaulting failed:", vaultRes.error);
+      toast.error("Vault Sync Error", {
+        description: "Prompt copied, but database update failed."
+      });
+    }
+
+    setTimeout(() => window.open(url, "_blank"), 800);
+  };
+
+  const bridgeTools = [
+    { name: "v0.dev", url: "https://v0.dev", icon: <Terminal size={14} />, color: "text-pink-500", border: "hover:border-pink-500/50" },
+    { name: "Bolt.new", url: "https://bolt.new", icon: <Zap size={14} />, color: "text-orange-500", border: "hover:border-orange-500/50" },
+    { name: "Cursor", url: "https://cursor.com", icon: <Cpu size={14} />, color: "text-cyan-400", border: "hover:border-cyan-500/50" },
+    { name: "Lovable", url: "https://lovable.dev", icon: <Box size={14} />, color: "text-yellow-400", border: "hover:border-yellow-500/50" },
+  ];
+
+  return (
+    <div className="space-y-3 px-2">
+      <h3 className="text-[9px] font-black text-gray-500 uppercase tracking-widest px-1">Deploy to IDE</h3>
+      <div className="grid grid-cols-2 gap-2">
+        {bridgeTools.map((tool) => (
+          <button 
+            key={tool.name}
+            onClick={() => shipToTool(tool.url, tool.name)}
+            className={`flex items-center justify-between p-2.5 rounded-xl bg-white/[0.03] border border-white/5 transition-all group ${tool.border}`}
+          >
+            <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-tighter">
+              <span className={tool.color}>{tool.icon}</span> {tool.name}
+            </div>
+            <ExternalLink size={10} className="opacity-0 group-hover:opacity-100 text-gray-500" />
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function PlaygroundContent() {
   const { data: session, status, update } = useSession();
@@ -81,6 +141,10 @@ function PlaygroundContent() {
   const [currentVersion, setCurrentVersion] = useState<number>(1);
   const [promptInput, setPromptInput] = useState("");
   const [isRiskModalOpen, setIsRiskModalOpen] = useState(false);
+  
+  // --- RAG STATES ---
+  const [selectedContextIds, setSelectedContextIds] = useState<string[]>([]);
+  const [vaultDocs, setVaultDocs] = useState<any[]>([]);
 
   // Admin & Protection Logic
   const actualRole = session?.user?.role;
@@ -96,19 +160,24 @@ function PlaygroundContent() {
     }
   }, [searchParams, update]);
 
+  // Load History and Vault Documents
   useEffect(() => {
-    async function loadHistory() {
+    async function loadData() {
       if (status !== "authenticated") return;
       try {
-        const data = await getAllUserInquiries();
-        if (data) setHistory(data as HistoryItem[]);
+        const [historyData, vaultData] = await Promise.all([
+          getAllUserInquiries(),
+          getCodeVaultDocs()
+        ]);
+        if (historyData) setHistory(historyData as HistoryItem[]);
+        if (vaultData) setVaultDocs(vaultData);
       } catch (error) {
-        console.error("History fetch failed", error);
+        console.error("Data fetch failed", error);
       } finally {
         setIsInitialLoad(false);
       }
     }
-    if (mounted) loadHistory();
+    if (mounted) loadData();
   }, [status, mounted]);
 
   useEffect(() => {
@@ -124,6 +193,12 @@ function PlaygroundContent() {
     toast.success(adminMode ? "Switched to User View" : "Admin Mode Activated", {
       icon: adminMode ? <User size={14}/> : <ShieldCheck size={14} className="text-green-400"/>
     });
+  };
+
+  const toggleContext = (id: string) => {
+    setSelectedContextIds(prev => 
+      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+    );
   };
 
   const fullMasterPrompt = steps.length > 0 
@@ -201,12 +276,30 @@ function PlaygroundContent() {
 
     setIsLoading(true);
     try {
+      // --- RAG CONTEXT INJECTION ---
+      const selectedContext = vaultDocs
+        .filter(doc => selectedContextIds.includes(doc.id))
+        .map(doc => `[REFERENCE PATTERN: ${doc.title}]\n${doc.content}`)
+        .join("\n\n---\n\n");
+
+      const finalPrompt = selectedContext 
+        ? `ACT AS AN ARCHITECT. INHERIT LOGIC FROM THESE BLUEPRINTS:\n\n${selectedContext}\n\nUSER REQUEST: ${promptInput}`
+        : promptInput;
+
       const result = currentInquiryId 
-        ? await updateVibeVersion(currentInquiryId, promptInput, currentVersion)
-        : await createNewVibe(promptInput);
+        ? await updateVibeVersion(currentInquiryId, finalPrompt, currentVersion)
+        : await createNewVibe(finalPrompt);
       
       if (result.success) {
-        await update(); 
+        if (result.newCreditBalance !== undefined) {
+          await update({
+            ...session,
+            user: { ...session?.user, credits: result.newCreditBalance },
+          });
+        } else {
+          await update();
+        }
+
         setSteps(result.steps as Step[]);
         setEmergentContent(result.emergentContent || "");
         setCurrentVersion(result.version ?? (currentInquiryId ? currentVersion + 1 : 1));
@@ -220,6 +313,8 @@ function PlaygroundContent() {
         setPromptInput("");
         setSelectedStep(0);
         if (result.emergentContent) setTimeout(() => setIsRiskModalOpen(true), 500);
+      } else {
+        toast.error(result.error || "Generation Failed");
       }
     } catch (error) {
       toast.error("Generation Failed");
@@ -259,38 +354,23 @@ function PlaygroundContent() {
             <span className="font-black text-lg tracking-tighter uppercase">YouPrompt</span>
         </div>
 
-        {/* Navigation Tabs UI */}
         <div className="mb-6 space-y-1">
-          <Link 
-            href="/explore" 
-            className={`flex items-center gap-3 px-4 py-3 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all ${pathname === '/explore' ? 'bg-blue-600/10 text-blue-400 border border-blue-500/20' : 'text-gray-400 hover:bg-white/5 hover:text-white border border-transparent'}`}
-          >
+          <Link href="/explore" className={`flex items-center gap-3 px-4 py-3 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all ${pathname === '/explore' ? 'bg-blue-600/10 text-blue-400 border border-blue-500/20' : 'text-gray-400 hover:bg-white/5 hover:text-white border border-transparent'}`}>
             <Globe size={16} /> Community Vibes
           </Link>
-          <Link 
-            href="/playground" 
-            className={`flex items-center gap-3 px-4 py-3 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all ${pathname === '/playground' ? 'bg-white/5 text-white border border-white/10' : 'text-gray-400 hover:bg-white/5 hover:text-white border border-transparent'}`}
-          >
+          <Link href="/playground" className={`flex items-center gap-3 px-4 py-3 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all ${pathname === '/playground' ? 'bg-white/5 text-white border border-white/10' : 'text-gray-400 hover:bg-white/5 hover:text-white border border-transparent'}`}>
             <Terminal size={16} /> Playground
           </Link>
-          
-          {/* Admin Dashboard Navigation */}
           {isAdmin && (
-            <Link 
-              href="/admin" 
-              className={`flex items-center gap-3 px-4 py-3 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all ${pathname === '/admin' ? 'bg-purple-600/10 text-purple-400 border border-purple-500/20' : 'text-gray-400 hover:bg-purple-600/5 hover:text-purple-300 border border-transparent'}`}
-            >
+            <Link href="/admin" className={`flex items-center gap-3 px-4 py-3 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all ${pathname === '/admin' ? 'bg-purple-600/10 text-purple-400 border border-purple-500/20' : 'text-gray-400 hover:bg-purple-600/5 hover:text-purple-300 border border-transparent'}`}>
               <LayoutDashboard size={16} /> Admin Console
             </Link>
           )}
         </div>
     
-        {/* Credits / Admin Mode Card */}
         <div className={`mb-6 p-4 rounded-2xl border transition-all ${adminMode ? "bg-gradient-to-br from-green-600/20 to-emerald-600/10 border-green-500/20" : "bg-gradient-to-br from-blue-600/20 to-purple-600/10 border-blue-500/20"}`}>
           <div className="flex items-center justify-between mb-2">
-            <span className="text-[10px] font-bold uppercase tracking-widest opacity-70">
-              {adminMode ? "Admin Control" : "Credits"}
-            </span>
+            <span className="text-[10px] font-bold uppercase tracking-widest opacity-70">{adminMode ? "Admin Control" : "Credits"}</span>
             {adminMode ? <ShieldCheck size={12} className="text-green-400" /> : <Zap size={12} className="text-blue-400" />}
           </div>
           <div className="flex items-baseline justify-between">
@@ -303,17 +383,11 @@ function PlaygroundContent() {
           </div>
         </div>
 
-        {/* Admin Switch */}
         {isAdmin && (
-          <button 
-            onClick={toggleAdminMode} 
-            className={`mb-6 flex items-center justify-between w-full p-3 rounded-xl border text-[10px] font-bold uppercase tracking-widest transition-all ${adminMode ? "bg-green-500/10 border-green-500/30 text-green-400" : "bg-white/5 border-white/10 text-gray-500"}`}
-          >
-            <div className="flex items-center gap-2">
-              <ShieldAlert size={14} /> {adminMode ? "Admin Active" : "User View"}
-            </div>
+          <button onClick={toggleAdminMode} className={`mb-6 flex items-center justify-between w-full p-3 rounded-xl border text-[10px] font-bold uppercase tracking-widest transition-all ${adminMode ? "bg-green-500/10 border-green-500/30 text-green-400" : "bg-white/5 border-white/10 text-gray-500"}`}>
+            <div className="flex items-center gap-2"><ShieldAlert size={14} /> {adminMode ? "Admin Active" : "User View"}</div>
             <div className={`w-8 h-4 rounded-full relative transition-colors ${adminMode ? "bg-green-500" : "bg-gray-700"}`}>
-              <div className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-all ${adminMode ? "left-4.5" : "left-0.5"}`} />
+              <div className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-all ${adminMode ? "left-[1.125rem]" : "left-0.5"}`} />
             </div>
           </button>
         )}
@@ -378,8 +452,16 @@ function PlaygroundContent() {
           </AnimatePresence>
         </div>
 
-        {/* Floating Input */}
+        {/* Floating Input with RAG indicator */}
         <div className="w-full max-w-2xl absolute bottom-6 md:bottom-8 px-4 md:px-6 z-[40]">
+          {selectedContextIds.length > 0 && (
+            <div className="flex items-center gap-2 mb-3 px-4">
+              <div className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse" />
+              <span className="text-[9px] font-black text-blue-500 uppercase tracking-widest">
+                Context: {selectedContextIds.length} Patterns Active
+              </span>
+            </div>
+          )}
           <form onSubmit={handleSubmit} className="relative group">
             <input 
               value={promptInput} 
@@ -402,8 +484,8 @@ function PlaygroundContent() {
             <button onClick={() => setIsRightSidebarOpen(false)} className="p-2 text-gray-500"><X size={20}/></button>
         </div>
 
-        <div className="p-4 border-b border-white/5 bg-white/[0.02]">
-            <div className="flex items-center justify-between mb-3 px-2">
+        <div className={`p-4 border-b border-white/5 bg-white/[0.02] ${mounted ? 'space-y-4' : ''}`}>
+            <div className={`flex items-center justify-between px-2 ${!mounted ? 'mb-3' : ''}`}>
               <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Master Workflow</span>
               <div className="flex gap-2">
                 {steps.length > 0 && (
@@ -420,14 +502,58 @@ function PlaygroundContent() {
               </div>
             </div>
             
-            <div className="bg-black/40 rounded-xl p-3 border border-white/5 h-24 overflow-y-auto custom-scrollbar mb-4">
+            <div className={`bg-black/40 rounded-xl p-3 border border-white/5 overflow-y-auto custom-scrollbar ${mounted ? 'h-20' : 'h-24 mb-4'}`}>
                 <p className="text-[10px] font-mono text-gray-500 leading-relaxed italic">
                   {steps.length > 0 ? fullMasterPrompt.substring(0, 150) + "..." : "Architectural prompt will appear here."}
                 </p>
             </div>
+
+            {mounted && (
+              <>
+                <VibeBridge 
+                  fullPrompt={fullMasterPrompt} 
+                  title={steps[0]?.objective || "New Blueprint"} 
+                />
+                <div className="flex items-center gap-2 px-3 py-2 bg-blue-500/10 border border-blue-500/20 rounded-lg mx-2">
+                  <div className="relative flex h-1.5 w-1.5">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-blue-500"></span>
+                  </div>
+                  <span className="text-[8px] font-bold text-blue-400 uppercase tracking-widest uppercase">Vault Synced</span>
+                </div>
+              </>
+            )}
         </div>
 
-        <div className="flex p-2 gap-2 bg-black/20 border-b border-white/5">
+        {/* RAG Context Panel */}
+        <div className="space-y-3 px-2 mt-6">
+          <h3 className="text-[9px] font-black text-gray-500 uppercase tracking-widest px-1 flex items-center gap-2">
+            <Database size={10} /> RAG Context (Vault)
+          </h3>
+          <div className="flex flex-col gap-2 max-h-48 overflow-y-auto custom-scrollbar px-1">
+            {vaultDocs.length > 0 ? vaultDocs.map((doc) => (
+              <button 
+                key={doc.id}
+                onClick={() => toggleContext(doc.id)}
+                className={`flex items-center gap-3 p-2.5 rounded-xl border transition-all text-left group ${
+                  selectedContextIds.includes(doc.id) 
+                    ? "bg-blue-600/10 border-blue-500/40 text-blue-400 shadow-[0_0_15px_rgba(59,130,246,0.05)]" 
+                    : "bg-white/[0.03] border-white/5 text-gray-500 hover:border-white/20"
+                }`}
+              >
+                <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${selectedContextIds.includes(doc.id) ? "bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.5)]" : "bg-gray-700"}`} />
+                <span className="text-[10px] font-bold truncate uppercase tracking-tight flex-1">{doc.title}</span>
+                {selectedContextIds.includes(doc.id) && <Check size={10} className="text-blue-500" />}
+              </button>
+            )) : (
+              <div className="py-8 text-center border border-dashed border-white/5 rounded-2xl">
+                <p className="text-[10px] text-gray-600 italic px-4 uppercase tracking-widest">Vault is empty</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="flex p-2 gap-2 bg-black/20 border-b border-white/5 mt-6">
           <button onClick={() => setActiveTab("workflow")} className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all ${activeTab === 'workflow' ? 'bg-white/5 text-white border border-white/10' : 'text-gray-500 hover:text-gray-300'}`}>
             <ToyBrick size={14} /> Tools
           </button>
@@ -446,21 +572,21 @@ function PlaygroundContent() {
                       <a key={p.name} href={p.url} target="_blank" rel="noopener noreferrer" className="flex items-center justify-between p-4 rounded-2xl bg-white/[0.03] border border-white/5 hover:border-blue-500/30 transition-all group">
                         <div className="flex items-center gap-3">
                           <Globe size={16} className={p.color} />
-                          <span className="text-xs font-medium">{p.name}</span>
+                          <span className="text-xs font-medium uppercase tracking-tighter">{p.name}</span>
                         </div>
                         <ExternalLink size={12} className="opacity-0 group-hover:opacity-100 transition-opacity" />
                       </a>
                     ))}
                   </div>
                 ) : (
-                  <div className="text-center py-20 opacity-30 text-xs italic">Select a step to unlock tools</div>
+                  <div className="text-center py-20 opacity-30 text-[10px] font-bold uppercase tracking-widest">Select a step to unlock tools</div>
                 )}
               </motion.div>
             ) : (
               <motion.div key="tab-emergent" initial={{ opacity: 0, x: 5 }} animate={{ opacity: 1, x: 0 }} className="space-y-6">
                 <div className="p-5 rounded-3xl bg-blue-600/5 border border-blue-500/20 shadow-inner">
                   <h3 className="text-blue-400 font-bold text-[10px] uppercase tracking-widest mb-3">Neural Analysis</h3>
-                  <p className="text-gray-300 text-sm leading-relaxed">{emergentContent || "Awaiting architectural generation..."}</p>
+                  <p className="text-gray-300 text-sm leading-relaxed italic">{emergentContent || "Architecting logic patterns..."}</p>
                 </div>
               </motion.div>
             )}

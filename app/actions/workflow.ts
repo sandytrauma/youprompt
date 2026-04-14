@@ -17,7 +17,7 @@
 "use server";
 
 import { db } from "@/db";
-import { inquiries, tasks, users } from "@/db/schema";
+import { documents, inquiries, tasks, users } from "@/db/schema";
 import { generateVibeWorkflow } from "@/lib/gemini";
 import { authOptions } from "@/lib/auth";
 import { getServerSession } from "next-auth";
@@ -34,6 +34,7 @@ type ActionResponse = {
   version?: number;
   error?: string;
   emergentContent?: string;
+  newCreditBalance?: number; // Added to help UI sync
 };
 
 /**
@@ -110,21 +111,23 @@ export async function createNewVibe(prompt: string): Promise<ActionResponse> {
     });
 
     // E. Deduct Credits
-    await db
+    const [updatedUser] = await db
       .update(users)
       .set({
         credits: sql`${users.credits} - ${VIBE_COST}`
       })
-      .where(eq(users.id, session.user.id));
+      .where(eq(users.id, session.user.id))
+      .returning({ credits: users.credits });
 
     revalidatePath("/playground");
-    revalidatePath("/admin"); // Update admin dashboard stats
+    revalidatePath("/admin"); 
     
     return { 
       success: true, 
       steps: aiResponse.steps, 
       emergentContent: aiResponse.emergentContent,
-      inquiryId: newInquiry.id 
+      inquiryId: newInquiry.id,
+      newCreditBalance: updatedUser.credits ?? 0
     };
 
   } catch (error) {
@@ -142,7 +145,6 @@ export async function createNewVibe(prompt: string): Promise<ActionResponse> {
 export async function getVibeHistory(inquiryId: string) {
   const session = await getServerSession(authOptions);
   
-  // Guard clause: ensure user is authenticated
   if (!session?.user?.id) return null;
 
   try {
@@ -154,19 +156,16 @@ export async function getVibeHistory(inquiryId: string) {
       },
     });
 
-    // Verify the record exists and belongs to the authenticated user
     if (!result || result.inquiry?.userId !== session.user.id) {
       return null;
     }
 
-    // Return the result without referencing the non-existent isPublic column
     return {
       id: result.id,
-      steps: result.steps, // Your Step[] array from JSONB
+      steps: result.steps, 
       emergentContent: result.emergentContent,
       version: result.version,
       createdAt: result.createdAt,
-      // We hardcode this to false for now since the DB column doesn't exist
       isPublic: false, 
     };
   } catch (error) {
@@ -214,12 +213,13 @@ export async function updateVibeVersion(
     }).returning();
 
     // D. Deduct Credits
-    await db
+    const [updatedUser] = await db
       .update(users)
       .set({
         credits: sql`${users.credits} - ${VIBE_COST}`
       })
-      .where(eq(users.id, session.user.id));
+      .where(eq(users.id, session.user.id))
+      .returning({ credits: users.credits });
     
     revalidatePath("/playground");
     
@@ -227,7 +227,8 @@ export async function updateVibeVersion(
       success: true, 
       steps: aiResponse.steps, 
       emergentContent: aiResponse.emergentContent,
-      version: newTask.version ?? (version + 1)
+      version: newTask.version ?? (version + 1),
+      newCreditBalance: updatedUser.credits ?? 0
     };
   } catch (error) {
     console.error("Update Version Error:", error);
@@ -236,4 +237,16 @@ export async function updateVibeVersion(
       error: "Failed to update version." 
     };
   }
+}
+
+// Example Logic for retrieval
+async function getRelevantContext(userInput: string) {
+  // Search the 'documents' table where category = 'technical'
+  // and content matches keywords from userInput
+  const relatedDocs = await db.select()
+    .from(documents)
+    .where(eq(documents.category, 'technical'))
+    .limit(3); 
+    
+  return relatedDocs.map(d => d.content).join("\n\n");
 }
