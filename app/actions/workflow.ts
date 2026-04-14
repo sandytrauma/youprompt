@@ -179,7 +179,7 @@ import { vibes } from "@/db/schema"; // Import your vibes table
 
 export async function getPublicVibe(id: string) {
   try {
-    // 1. Try to fetch from the 'vibes' table first since that's what you're sharing
+    // 1. Try Vibes table first (since you are sharing Vibe IDs)
     const vibeResult = await db.query.vibes.findFirst({
       where: eq(vibes.id, id),
     });
@@ -188,15 +188,16 @@ export async function getPublicVibe(id: string) {
       return {
         id: vibeResult.id,
         title: vibeResult.title,
-        steps: vibeResult.steps, // This is already in the vibes table
-        version: 1, // Default for vibes
+        steps: vibeResult.steps,
         createdAt: vibeResult.createdAt,
+        type: 'vibe'
       };
     }
 
-    // 2. Fallback: Check 'tasks' table if not found in vibes (optional, for backward compatibility)
+    // 2. Fallback to Tasks if not found in Vibes
     const taskResult = await db.query.tasks.findFirst({
-      where: eq(tasks.id, id),
+      where: or(eq(tasks.id, id), eq(tasks.inquiryId, id)),
+      orderBy: [desc(tasks.version)],
       with: { inquiry: true },
     });
 
@@ -205,15 +206,14 @@ export async function getPublicVibe(id: string) {
         id: taskResult.id,
         title: taskResult.inquiry.title,
         steps: taskResult.steps,
-        version: taskResult.version,
         createdAt: taskResult.createdAt,
+        type: 'task'
       };
     }
 
-    console.log(`No record found in Vibes or Tasks for ID: ${id}`);
     return null;
   } catch (error) {
-    console.error("Fetch Error:", error);
+    console.error("Database Error:", error);
     return null;
   }
 }
