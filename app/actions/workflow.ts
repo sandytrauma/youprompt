@@ -174,6 +174,36 @@ export async function getVibeHistory(inquiryId: string) {
   }
 }
 
+export async function getPublicVibe(inquiryId: string) {
+  try {
+    const result = await db.query.tasks.findFirst({
+      where: eq(tasks.inquiryId, inquiryId),
+      orderBy: [desc(tasks.version)],
+      with: {
+        inquiry: true, 
+      },
+    });
+
+    // 1. Check if the task exists
+    // 2. Check if the linked inquiry exists to satisfy the "possibly null" error
+    if (!result || !result.inquiry) {
+      return null;
+    }
+
+    return {
+      id: result.id,
+      title: result.inquiry.title, // TypeScript is now happy because we checked it above
+      steps: result.steps, 
+      emergentContent: result.emergentContent,
+      version: result.version,
+      createdAt: result.createdAt,
+    };
+  } catch (error) {
+    console.error("Error in getPublicVibe:", error);
+    return null;
+  }
+}
+
 /**
  * 4. Edit an existing Vibe and save it as a new version.
  * Production Ready: Credits applied for iterations.
