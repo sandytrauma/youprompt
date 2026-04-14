@@ -175,27 +175,45 @@ export async function getVibeHistory(inquiryId: string) {
 }
 
 
+import { vibes } from "@/db/schema"; // Import your vibes table
 
 export async function getPublicVibe(id: string) {
   try {
-    const result = await db.query.tasks.findFirst({
-      // Try matching the inquiryId OR the taskId itself
-      where: or(eq(tasks.inquiryId, id), eq(tasks.id, id)), 
-      orderBy: [desc(tasks.version)],
-      with: {
-        inquiry: true, 
-      },
+    // 1. Try to fetch from the 'vibes' table first since that's what you're sharing
+    const vibeResult = await db.query.vibes.findFirst({
+      where: eq(vibes.id, id),
     });
 
-    if (!result || !result.inquiry) return null;
+    if (vibeResult) {
+      return {
+        id: vibeResult.id,
+        title: vibeResult.title,
+        steps: vibeResult.steps, // This is already in the vibes table
+        version: 1, // Default for vibes
+        createdAt: vibeResult.createdAt,
+      };
+    }
 
-    return {
-      title: result.inquiry.title,
-      steps: result.steps,
-      version: result.version,
-      createdAt: result.createdAt,
-    };
+    // 2. Fallback: Check 'tasks' table if not found in vibes (optional, for backward compatibility)
+    const taskResult = await db.query.tasks.findFirst({
+      where: eq(tasks.id, id),
+      with: { inquiry: true },
+    });
+
+    if (taskResult && taskResult.inquiry) {
+      return {
+        id: taskResult.id,
+        title: taskResult.inquiry.title,
+        steps: taskResult.steps,
+        version: taskResult.version,
+        createdAt: taskResult.createdAt,
+      };
+    }
+
+    console.log(`No record found in Vibes or Tasks for ID: ${id}`);
+    return null;
   } catch (error) {
+    console.error("Fetch Error:", error);
     return null;
   }
 }

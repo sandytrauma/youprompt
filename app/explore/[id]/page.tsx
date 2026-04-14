@@ -7,6 +7,9 @@ interface VibeStep {
   precisePrompt: string;
 }
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 // In Next.js 14.x/15.x, params should be treated as a Promise
 export default async function SharedVibePage({ 
   params 
