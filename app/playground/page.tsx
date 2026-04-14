@@ -1,3 +1,19 @@
+/**
+ * Copyright 2026 Sandeep Kumar
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 "use client";
 
 import { useState, useEffect, Suspense } from "react";
@@ -9,19 +25,20 @@ import {
   updateVibeVersion, 
   getAllUserInquiries,
 } from "@/app/actions/workflow"; 
-// 1. IMPORT the publish action
-import { toggleVibeVisibility, publishToExplore } from "@/app/actions/social";
+import { publishToExplore } from "@/app/actions/social";
 import { 
   Loader2, Send, Cpu, Layers, RotateCcw, 
-  Globe, ExternalLink, LogOut, ShieldCheck, 
+  Globe, LogOut, ShieldCheck, 
   ChevronRight, Sparkles, ToyBrick, Zap,
-  AlertCircle, Menu, X, Copy, Check, PlusCircle,
-  Settings, Terminal, Share2, Lock, Unlock
+  Menu, X, Copy, Check, PlusCircle,
+  Settings, Terminal, Share2, CreditCard,
+  User, ShieldAlert, LayoutDashboard, ExternalLink
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { RiskPopup } from "../components/RiskPopup";
 import { toast } from "sonner";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 
 interface Step {
   objective: string;
@@ -41,6 +58,7 @@ export const dynamic = "force-dynamic";
 function PlaygroundContent() {
   const { data: session, status, update } = useSession();
   const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   
   // UI States
@@ -49,7 +67,7 @@ function PlaygroundContent() {
   const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState(false);
   const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [shareLoading, setShareLoading] = useState(false); // New loading state for sharing
+  const [shareLoading, setShareLoading] = useState(false);
   const [shareCopied, setShareCopied] = useState(false);
   
   // Data States
@@ -60,12 +78,14 @@ function PlaygroundContent() {
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [selectedStep, setSelectedStep] = useState<number | null>(null);
   const [currentInquiryId, setCurrentInquiryId] = useState<string | null>(null);
-  const [isPublic, setIsPublic] = useState(false);
   const [currentVersion, setCurrentVersion] = useState<number>(1);
   const [promptInput, setPromptInput] = useState("");
   const [isRiskModalOpen, setIsRiskModalOpen] = useState(false);
 
-  const isAdmin = session?.user?.role === "admin";
+  // Admin & Protection Logic
+  const actualRole = session?.user?.role;
+  const [adminMode, setAdminMode] = useState(false);
+  const isAdmin = actualRole === "admin";
   const userCredits = (session?.user as any)?.credits ?? 0;
 
   useEffect(() => {
@@ -95,6 +115,17 @@ function PlaygroundContent() {
     document.body.style.overflow = isRiskModalOpen ? 'hidden' : 'unset';
   }, [isRiskModalOpen]);
 
+  const toggleAdminMode = () => {
+    if (!isAdmin) {
+      toast.error("Access Denied", { description: "Administrator privileges required." });
+      return;
+    }
+    setAdminMode(!adminMode);
+    toast.success(adminMode ? "Switched to User View" : "Admin Mode Activated", {
+      icon: adminMode ? <User size={14}/> : <ShieldCheck size={14} className="text-green-400"/>
+    });
+  };
+
   const fullMasterPrompt = steps.length > 0 
     ? `FULL ARCHITECTURE ROADMAP (v${currentVersion}):\n\n` + 
       steps.map((s, i) => `STEP ${i + 1} - ${s.objective.toUpperCase()}:\n${s.precisePrompt}`).join("\n\n")
@@ -106,29 +137,20 @@ function PlaygroundContent() {
       await navigator.clipboard.writeText(fullMasterPrompt);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-      toast.success("Prompt Copied", { description: "Ready to paste into your AI tool." });
+      toast.success("Prompt Copied");
     } catch (err) {
       toast.error("Copy failed");
     }
   };
 
-  /**
-   * UPDATED: handleShareVibe
-   * Now actually publishes to the database AND copies the link.
-   */
   const handleShareVibe = async () => {
     if (!currentInquiryId) return;
-    
     setShareLoading(true);
     try {
-      // 1. Publish to the 'vibes' table in Neon
       const res = await publishToExplore(currentInquiryId);
-      
       if (res.success) {
-        // 2. If DB update succeeded, copy the public link
-        const shareUrl = `${window.location.origin}/explore`; // Or /view/${currentInquiryId} if you built that
+        const shareUrl = `${window.location.origin}/explore`;
         await navigator.clipboard.writeText(shareUrl);
-        
         setShareCopied(true);
         toast.success("Published to Explore!", { description: "Link copied to clipboard." });
         setTimeout(() => setShareCopied(false), 3000);
@@ -142,17 +164,11 @@ function PlaygroundContent() {
     }
   };
 
-  const handleVisibilityToggle = async () => {
-    if (!currentInquiryId) return;
-    toast.info("Visibility is managed via the 'Share' button.");
-  };
-
   async function handleSelectHistory(id: string) {
     if (isLoading) return;
     setSelectedStep(null);
     setIsLoading(true);
     setIsLeftSidebarOpen(false); 
-
     try {
       const result = await getVibeHistory(id);
       if (result) {
@@ -160,7 +176,6 @@ function PlaygroundContent() {
         setEmergentContent(result.emergentContent || "");
         setCurrentInquiryId(id);
         setCurrentVersion(result.version ?? 1);
-        setIsPublic(!!result.isPublic);
         setPromptInput("");
       }
     } catch (error) {
@@ -175,7 +190,8 @@ function PlaygroundContent() {
     if (e) e.preventDefault();
     if (!promptInput.trim() || isLoading) return;
 
-    if (userCredits <= 0 && !isAdmin) {
+    const isActuallyBypassed = isAdmin && adminMode;
+    if (userCredits <= 0 && !isActuallyBypassed) {
       toast.error("Insufficient Credits", {
         description: "Please refill your credits to continue.",
         action: { label: "Refill", onClick: () => router.push("/refill") },
@@ -243,22 +259,64 @@ function PlaygroundContent() {
             <span className="font-black text-lg tracking-tighter uppercase">YouPrompt</span>
         </div>
 
+        {/* Navigation Tabs UI */}
         <div className="mb-6 space-y-1">
-          <Link href="/explore" className="flex items-center gap-3 px-4 py-2.5 rounded-xl text-[10px] font-bold uppercase tracking-widest text-gray-400 hover:bg-white/5 hover:text-white transition-all">
-            <Globe size={16} className="text-blue-400" /> Community Vibes
+          <Link 
+            href="/explore" 
+            className={`flex items-center gap-3 px-4 py-3 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all ${pathname === '/explore' ? 'bg-blue-600/10 text-blue-400 border border-blue-500/20' : 'text-gray-400 hover:bg-white/5 hover:text-white border border-transparent'}`}
+          >
+            <Globe size={16} /> Community Vibes
           </Link>
-          <Link href="/playground" className="flex items-center gap-3 px-4 py-2.5 rounded-xl text-[10px] font-bold uppercase tracking-widest bg-white/5 text-white border border-white/10">
-            <Terminal size={16} className="text-blue-500" /> Playground
+          <Link 
+            href="/playground" 
+            className={`flex items-center gap-3 px-4 py-3 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all ${pathname === '/playground' ? 'bg-white/5 text-white border border-white/10' : 'text-gray-400 hover:bg-white/5 hover:text-white border border-transparent'}`}
+          >
+            <Terminal size={16} /> Playground
           </Link>
+          
+          {/* Admin Dashboard Navigation */}
+          {isAdmin && (
+            <Link 
+              href="/admin" 
+              className={`flex items-center gap-3 px-4 py-3 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all ${pathname === '/admin' ? 'bg-purple-600/10 text-purple-400 border border-purple-500/20' : 'text-gray-400 hover:bg-purple-600/5 hover:text-purple-300 border border-transparent'}`}
+            >
+              <LayoutDashboard size={16} /> Admin Console
+            </Link>
+          )}
         </div>
     
-        <div className="mb-6 p-4 rounded-2xl bg-gradient-to-br from-blue-600/20 to-purple-600/10 border border-blue-500/20">
+        {/* Credits / Admin Mode Card */}
+        <div className={`mb-6 p-4 rounded-2xl border transition-all ${adminMode ? "bg-gradient-to-br from-green-600/20 to-emerald-600/10 border-green-500/20" : "bg-gradient-to-br from-blue-600/20 to-purple-600/10 border-blue-500/20"}`}>
           <div className="flex items-center justify-between mb-2">
-            <span className="text-[10px] font-bold text-blue-400 uppercase tracking-widest">{isAdmin ? "System Access" : "Credits"}</span>
-            <Zap size={12} className={isAdmin ? "text-yellow-400" : "text-blue-400"} />
+            <span className="text-[10px] font-bold uppercase tracking-widest opacity-70">
+              {adminMode ? "Admin Control" : "Credits"}
+            </span>
+            {adminMode ? <ShieldCheck size={12} className="text-green-400" /> : <Zap size={12} className="text-blue-400" />}
           </div>
-          <span className="text-2xl font-black">{isAdmin ? "Unlimited" : userCredits}</span>
+          <div className="flex items-baseline justify-between">
+            <span className="text-2xl font-black">{adminMode ? "Unlimited" : userCredits}</span>
+            {!adminMode && (
+              <button onClick={() => router.push("/refill")} className="text-[10px] bg-white/10 hover:bg-white/20 text-white px-2 py-1 rounded-md flex items-center gap-1 font-bold transition-all border border-white/10">
+                <CreditCard size={10} /> Refill
+              </button>
+            )}
+          </div>
         </div>
+
+        {/* Admin Switch */}
+        {isAdmin && (
+          <button 
+            onClick={toggleAdminMode} 
+            className={`mb-6 flex items-center justify-between w-full p-3 rounded-xl border text-[10px] font-bold uppercase tracking-widest transition-all ${adminMode ? "bg-green-500/10 border-green-500/30 text-green-400" : "bg-white/5 border-white/10 text-gray-500"}`}
+          >
+            <div className="flex items-center gap-2">
+              <ShieldAlert size={14} /> {adminMode ? "Admin Active" : "User View"}
+            </div>
+            <div className={`w-8 h-4 rounded-full relative transition-colors ${adminMode ? "bg-green-500" : "bg-gray-700"}`}>
+              <div className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-all ${adminMode ? "left-4.5" : "left-0.5"}`} />
+            </div>
+          </button>
+        )}
 
         <button onClick={() => { setCurrentInquiryId(null); setSteps([]); setEmergentContent(""); setPromptInput(""); setSelectedStep(null); }} className="mb-6 flex items-center justify-center gap-2 w-full p-3 rounded-xl bg-white text-black font-bold text-sm hover:scale-[1.02] active:scale-95 transition-all shadow-lg">
           <PlusCircle size={16} /> New Vibe
@@ -280,6 +338,7 @@ function PlaygroundContent() {
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-[11px] font-bold truncate">{session?.user?.name}</p>
+              <p className="text-[9px] text-gray-500 truncate uppercase tracking-tighter">{actualRole} Mode</p>
             </div>
           </div>
           <div className="grid grid-cols-2 gap-2">
@@ -322,7 +381,13 @@ function PlaygroundContent() {
         {/* Floating Input */}
         <div className="w-full max-w-2xl absolute bottom-6 md:bottom-8 px-4 md:px-6 z-[40]">
           <form onSubmit={handleSubmit} className="relative group">
-            <input value={promptInput} onChange={(e) => setPromptInput(e.target.value)} placeholder={currentInquiryId ? "Suggest changes..." : "Describe your workflow vibe..."} className={`w-full bg-[#161617] rounded-full py-4 md:py-5 px-6 md:px-8 pr-14 md:pr-16 outline-none border transition-all shadow-2xl text-sm ${(userCredits <= 0 && !isAdmin) ? "border-red-500/30 text-gray-600" : "border-white/10 focus:border-blue-500/50"}`} disabled={isLoading || (userCredits <= 0 && !isAdmin)} />
+            <input 
+              value={promptInput} 
+              onChange={(e) => setPromptInput(e.target.value)} 
+              placeholder={currentInquiryId ? "Suggest changes..." : "Describe your workflow vibe..."} 
+              className={`w-full bg-[#161617] rounded-full py-4 md:py-5 px-6 md:px-8 pr-14 md:pr-16 outline-none border transition-all shadow-2xl text-sm ${(userCredits <= 0 && !(isAdmin && adminMode)) ? "border-red-500/30 text-gray-600" : "border-white/10 focus:border-blue-500/50"}`} 
+              disabled={isLoading || (userCredits <= 0 && !(isAdmin && adminMode))} 
+            />
             <button type="submit" disabled={isLoading || !promptInput.trim()} className="absolute right-2 md:right-3 top-1/2 -translate-y-1/2 p-2.5 md:p-3 rounded-full transition-all bg-white text-black">
               {isLoading ? <Loader2 className="animate-spin" size={18} /> : currentInquiryId ? <RotateCcw size={18} /> : <Send size={18} />}
             </button>
@@ -330,7 +395,7 @@ function PlaygroundContent() {
         </div>
       </main>
 
-      {/* Right Sidebar - Builder Hub */}
+      {/* Right Sidebar */}
       <aside className={`fixed inset-y-0 right-0 z-[100] w-80 bg-[#111111] border-l border-white/5 flex flex-col transition-transform duration-300 transform ${isRightSidebarOpen ? "translate-x-0" : "translate-x-full"} md:relative md:translate-x-0 md:flex md:w-80 md:shrink-0`}>
         <div className="flex items-center justify-between p-4 md:hidden border-b border-white/5">
             <h2 className="text-xs font-bold uppercase tracking-widest text-gray-400">Builder Hub</h2>
