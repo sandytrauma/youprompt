@@ -1,86 +1,128 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db"; 
-import { users } from "@/db/schema"; 
-import { eq, sql } from "drizzle-orm";
+import { users, transactions } from "@/db/schema"; 
+import { eq, sql, and } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import crypto from "crypto";
 
-// Define the credit logic strictly to match your frontend bundles
-const creditMap: Record<string, number> = {
-  basic: 50,
-  pro: 200,
-  elite: 1000,
+// Matches your pricing.ts config
+const creditMap: Record<string, { credits: number; price: number }> = {
+  basic: { credits: 50, price: 599 },
+  pro: { credits: 200, price: 1999 },
+  elite: { credits: 1000, price: 6999 },
 };
 
-export async function GET(req: Request) {
-  const { searchParams } = new URL(req.url);
+export async function POST(req: Request) {
+  console.log("--- ⚡ PHONEPE SECURE CALLBACK START ⚡ ---");
   
-  // Extract parameters passed from the initiatePhonePePayment action
-  const userId = searchParams.get("userId");
-  const planId = searchParams.get("planId");
-  const state = searchParams.get("state"); 
-  const code = searchParams.get("code");
-
-  console.log("--- ⚡ PHONEPE CALLBACK PROCESSING ⚡ ---");
-  console.log("Incoming Params:", { userId, planId, state, code });
-
-  // Ensure this matches your Vercel production domain
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "https://youprompt.vercel.app";
 
   try {
-    // 1. DATA VALIDATION
-    // Check for valid UUID format (8-4-4-4-12 hex characters)
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    
-    if (!userId || !uuidRegex.test(userId)) {
-      console.error("❌ CALLBACK ERROR: Invalid or Missing UUID:", userId);
-      return NextResponse.redirect(`${baseUrl}/refill?error=invalid_user_context`);
+    // 1. PHONEPE VERIFICATION (CRITICAL FOR SECURITY)
+    const formData = await req.formData();
+    const encodedResponse = formData.get("response") as string;
+
+    if (!encodedResponse) {
+      console.error("❌ ERROR: No response payload from PhonePe");
+      return NextResponse.json({ error: "Missing payload" }, { status: 400 });
     }
 
-    if (!planId || !creditMap[planId]) {
-      console.error("❌ CALLBACK ERROR: Invalid Plan ID:", planId);
-      return NextResponse.redirect(`${baseUrl}/refill?error=invalid_plan`);
+    // Decode PhonePe response (Base64)
+    const decodedJson = JSON.parse(Buffer.from(encodedResponse, 'base64').toString('utf-8'));
+    const { success, code, data } = decodedJson;
+    const { merchantTransactionId, amount, userId } = data; // userId must be passed in merchantContext
+
+    // 2. IDEMPOTENCY CHECK (Issue #4 in Vulnerability Doc)
+    // Check if this transaction ID has already been marked 'COMPLETED'
+    const existingTx = await db.query.transactions.findFirst({
+      where: eq(transactions.id, merchantTransactionId),
+    });
+
+    if (existingTx?.status === "COMPLETED") {
+      console.warn("⚠️ IDEMPOTENCY: Transaction already processed:", merchantTransactionId);
+      return NextResponse.json({ status: "ALREADY_PROCESSED" });
     }
 
-    const creditsToAdd = creditMap[planId as keyof typeof creditMap];
+    // 3. VALIDATION
+    if (success && code === "PAYMENT_SUCCESS") {
+      // Find the plan based on the amount paid (Safety check)
+      const planEntry = Object.entries(creditMap).find(([_, val]) => val.price === amount / 100);
+      const creditsToAdd = planEntry ? planEntry[1].credits : 0;
 
-    // 2. DATABASE UPDATE
-    console.log(`🛠️ UPDATING DB: User ${userId} | Adding +${creditsToAdd} credits`);
+      if (creditsToAdd === 0) {
+        console.error("❌ ERROR: Payment amount does not match any plan:", amount);
+        return NextResponse.json({ error: "Invalid amount" }, { status: 400 });
+      }
 
-    const result = await db.update(users)
-      .set({ 
-        // sql`COALESCE` handles NULL credit values by defaulting them to 0 before adding
-        credits: sql`COALESCE(${users.credits}, 0) + ${creditsToAdd}` 
-      })
-      .where(eq(users.id, userId))
-      .returning({ updatedId: users.id, newTotal: users.credits });
+      // 4. ATOMIC TRANSACTION (DB Integrity)
+      // We wrap the credit addition and status update in a single transaction
+      await db.transaction(async (tx) => {
+        // Update user credits
+        const userUpdate = await tx.update(users)
+          .set({ 
+            credits: sql`COALESCE(${users.credits}, 0) + ${creditsToAdd}` 
+          })
+          .where(eq(users.id, userId))
+          .returning();
 
-    // 3. VERIFICATION & CACHE CLEARING
-    if (result.length === 0) {
-      console.error(`❌ DB UPDATE FAILED: No user record found for ID ${userId}`);
-      return NextResponse.redirect(`${baseUrl}/refill?error=user_not_found_in_db`);
+        if (userUpdate.length === 0) {
+          throw new Error(`User ${userId} not found during credit update`);
+        }
+
+        // Update transaction record to COMPLETED
+        // If your initiate action hasn't created this record yet, we use upsert logic
+        await tx.insert(transactions)
+          .values({
+            id: merchantTransactionId,
+            userId: userId,
+            amount: amount,
+            creditsAdded: creditsToAdd,
+            status: "COMPLETED",
+          })
+          .onConflictDoUpdate({
+            target: transactions.id,
+            set: { status: "COMPLETED" },
+          });
+      });
+
+      console.log(`✅ SUCCESS: Credited ${creditsToAdd} to User ${userId}`);
+
+      // 5. CACHE REVALIDATION
+      revalidatePath("/playground");
+      revalidatePath("/refill");
+      revalidatePath("/", "layout");
+
+      return NextResponse.json({ status: "SUCCESS" });
+    } else {
+      // Mark transaction as FAILED in DB
+      await db.update(transactions)
+        .set({ status: "FAILED" })
+        .where(eq(transactions.id, merchantTransactionId));
+        
+      console.error("❌ PAYMENT FAILED:", code);
+      return NextResponse.json({ status: "FAILED", code });
     }
-
-    console.log("✅ DB UPDATE SUCCESS:", result[0]);
-
-    /**
-     * 🔥 THE FIX FOR STALE DATA:
-     * We must tell Next.js to purge the cache for the playground and refill pages
-     * so the user sees their new credit balance immediately.
-     */
-    revalidatePath("/playground");
-    revalidatePath("/refill");
-    revalidatePath("/", "layout"); // Clears layout cache (where headers usually sit)
-
-    // 4. FINAL REDIRECT
-    return NextResponse.redirect(`${baseUrl}/playground?success=true`);
 
   } catch (error) {
-    console.error("🚨 CRITICAL CALLBACK EXCEPTION:", error);
-    
-    if (error instanceof Error) {
-      console.error("Trace:", error.message);
-    }
-    
-    return NextResponse.redirect(`${baseUrl}/refill?error=db_error`);
+    console.error("🚨 CRITICAL SYSTEM ERROR:", error);
+    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
+}
+
+/**
+ * GET Handler for User Redirect (The 'UI' callback)
+ * This doesn't update the DB; it just shows the success/error page to the user.
+ * Real credit logic stays in the POST (Webhook) above.
+ */
+export async function GET(req: Request) {
+  const { searchParams } = new URL(req.url);
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "https://youprompt.vercel.app";
+  
+  const status = searchParams.get("code");
+  
+  if (status === "PAYMENT_SUCCESS") {
+    return NextResponse.redirect(`${baseUrl}/playground?success=true`);
+  }
+  
+  return NextResponse.redirect(`${baseUrl}/refill?error=payment_failed`);
 }

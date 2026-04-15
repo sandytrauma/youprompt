@@ -1,145 +1,173 @@
+/**
+ * Copyright 2026 Sandeep Kumar
+ * YouPrompt Secure Documentation Engine v1.2
+ * Patches: Tab-Nabbing, Semantic SEO, and Mobile Table Overflow.
+ */
+
 import React from "react";
 import { 
-  Zap, 
-  BookOpen, 
-  Terminal, 
-  History, 
-  ShieldCheck, 
-  ArrowRight, 
-  Layers,
-  CheckCircle2
+  Zap, BookOpen, Terminal, ShieldCheck, ArrowRight, Layers,
+  CheckCircle2, Cpu, Globe, Database, CreditCard, Code2, ExternalLink
 } from "lucide-react";
 import Link from "next/link";
+import { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Documentation | YouPrompt AI",
+  description: "Official SOPs and Technical Specifications for YouPrompt Vibe Coding.",
+};
 
 export default function DocumentationPage() {
   return (
-    <div className="min-h-screen bg-[#0a0a0a] text-white font-[family-name:var(--font-geist-sans)]">
-      {/* Header */}
+    <div className="min-h-screen bg-[#0a0a0a] text-white font-sans selection:bg-blue-500/30 overflow-x-hidden">
+      {/* Secure Header */}
       <header className="border-b border-white/5 bg-[#0a0a0a]/80 backdrop-blur-md sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 md:px-6 py-4 flex items-center justify-between">
-          <Link href="/playground" className="flex items-center gap-2 font-bold text-lg md:text-xl tracking-tighter shrink-0">
-            <div className="bg-blue-600 p-1 rounded-lg">
-              <Zap size={18} fill="white" />
+          <Link 
+            href="/playground" 
+            className="flex items-center gap-2 font-bold text-xl tracking-tighter shrink-0 transition-opacity hover:opacity-80 focus:ring-2 focus:ring-blue-500 rounded-lg outline-none"
+          >
+            <div className="bg-blue-600 p-1 rounded-lg shadow-lg shadow-blue-600/20">
+              <Zap size={20} fill="white" className="text-white" />
             </div>
-            <span>
-              YouPrompt <span className="text-gray-500 font-medium text-xs md:text-sm ml-1 md:ml-2">Docs</span>
-            </span>
+            <span>YouPrompt <span className="text-gray-500 text-sm ml-2 font-medium tracking-normal">Docs</span></span>
           </Link>
-          <Link href="/playground" className="text-xs md:text-sm font-medium text-gray-400 hover:text-white transition-colors truncate ml-4">
-            Return to Playground
-          </Link>
+          <div className="flex items-center gap-6">
+            <a 
+              href="https://github.com/sandytrauma/youprompt" 
+              target="_blank" 
+              rel="noopener noreferrer" 
+              className="hidden md:flex items-center gap-1.5 text-xs font-bold text-gray-500 hover:text-white transition-colors"
+            >
+              Github <ExternalLink size={12} />
+            </a>
+            <Link href="/playground" className="text-sm font-bold text-blue-400 hover:text-blue-300 transition-colors">
+              Open Playground
+            </Link>
+          </div>
         </div>
       </header>
 
-      <main className="max-w-4xl mx-auto px-4 md:px-6 py-8 md:py-12">
-        {/* Hero Section */}
-        <section className="mb-12 md:mb-16">
-          <h1 className="text-3xl md:text-4xl font-bold tracking-tight mb-4">System Documentation</h1>
-          <p className="text-gray-400 text-base md:text-lg leading-relaxed">
-            Welcome to the YouPrompt Operating Procedure. This guide ensures you maximize the AI workflow 
-            generation engine and understand the versioning lifecycle of your inquiries.
+      <main className="max-w-5xl mx-auto px-6 py-12 md:py-20 animate-in fade-in slide-in-from-bottom-4 duration-1000">
+        
+        {/* Project Intelligence Overview */}
+        <section className="mb-24">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-[10px] font-black uppercase tracking-widest mb-6">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
+            </span>
+            System Operational
+          </div>
+          <h1 className="text-5xl md:text-7xl font-black tracking-tighter mb-6 leading-[0.9]">
+            The Architecture <br />
+            <span className="text-gray-600">of Vibe Coding.</span>
+          </h1>
+          <p className="text-gray-400 text-lg md:text-xl leading-relaxed max-w-3xl">
+            YouPrompt leverages Gemini 2.5 Flash to convert abstract product visions into 
+            multi-stage technical roadmaps. Built on Next.js 16.2.3 for extreme performance.
           </p>
         </section>
 
-        {/* 1. The Workflow Engine */}
-        <section className="mb-12 md:mb-16">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="p-2 bg-blue-500/10 rounded-lg text-blue-500">
-              <Layers size={24} />
+        {/* The 7-Step Workflow Logic */}
+        <section className="mb-24">
+          <div className="flex items-center gap-3 mb-10">
+            <div className="p-2 bg-blue-500/10 rounded-xl text-blue-500">
+              <Layers size={28} />
             </div>
-            <h2 className="text-xl md:text-2xl font-semibold">The Core Workflow</h2>
+            <h2 className="text-2xl font-black uppercase tracking-tight">Core Workflow</h2>
           </div>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
-            <div className="bg-[#161617] border border-white/5 p-6 rounded-2xl md:rounded-3xl">
-              <h3 className="text-blue-400 font-bold text-[10px] md:text-xs uppercase tracking-widest mb-3">01. Initialization</h3>
-              <p className="text-gray-400 text-sm leading-relaxed">
-                Enter a technical or operational goal. The system utilizes Gemini 3 Flash to decompose 
-                complex requests into a 7-step logical sequence.
-              </p>
-            </div>
-            <div className="bg-[#161617] border border-white/5 p-6 rounded-2xl md:rounded-3xl">
-              <h3 className="text-purple-400 font-bold text-[10px] md:text-xs uppercase tracking-widest mb-3">02. Versioning</h3>
-              <p className="text-gray-400 text-sm leading-relaxed">
-                Every modification creates a new "Vibe Version." This immutable history ensures 
-                you can reference previous logic while iterating on new ideas.
-              </p>
-            </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {[
+              { 
+                title: "01. Prompt Injection", 
+                desc: "User inputs a functional requirement via the Playground.",
+                icon: <Terminal className="text-blue-400" />
+              },
+              { 
+                title: "02. Logic Synthesis", 
+                desc: "AI identifies database schemas, API routes, and UI components.",
+                icon: <Cpu className="text-purple-400" />
+              },
+              { 
+                title: "03. IDE Handover", 
+                desc: "Validated prompts are moved to Cursor or Bolt for final build.",
+                icon: <Globe className="text-green-400" />
+              }
+            ].map((card, i) => (
+              <div key={i} className="bg-[#111] border border-white/5 p-8 rounded-[2.5rem] group hover:border-white/10 transition-all">
+                <div className="mb-6 p-3 bg-white/[0.03] w-fit rounded-2xl group-hover:scale-110 transition-transform">{card.icon}</div>
+                <h3 className="font-black text-[10px] uppercase tracking-[0.2em] mb-3 text-gray-500">{card.title}</h3>
+                <p className="text-gray-300 text-sm leading-relaxed font-medium">{card.desc}</p>
+              </div>
+            ))}
           </div>
         </section>
 
-        {/* 2. Your First Ever Prompt (SOP) */}
-        <section className="mb-12 md:mb-16 bg-blue-600/5 border border-blue-500/10 rounded-[2rem] md:rounded-[2.5rem] p-6 md:p-12 relative overflow-hidden">
-          <div className="absolute top-0 right-0 p-8 opacity-10 hidden md:block">
-            <Terminal size={120} />
+        {/* Standard Operating Procedure: CAR Framework */}
+        <section className="mb-24 bg-gradient-to-br from-blue-600/[0.05] to-transparent border border-blue-500/10 rounded-[3rem] p-8 md:p-16 relative overflow-hidden">
+          <div className="absolute top-0 right-0 p-12 opacity-5 pointer-events-none">
+            <BookOpen size={200} />
           </div>
           
-          <h2 className="text-xl md:text-2xl font-bold mb-8 flex items-center gap-2">
-            <BookOpen className="text-blue-500" size={20}/>
-            Standard Operating Procedure
+          <h2 className="text-3xl font-black mb-12 flex items-center gap-4">
+            User SOP: Prompt Mastery
           </h2>
 
-          <div className="space-y-8 md:space-y-10 relative z-10">
-            <div>
-              <h3 className="text-white font-semibold mb-2 flex items-start gap-3">
-                <CheckCircle2 size={18} className="text-blue-500 mt-0.5 shrink-0" />
-                <span>Step 1: Use the CAR Framework</span>
-              </h3>
-              <div className="text-gray-400 text-sm ml-8 md:ml-9">
-                For your first prompt, follow **Context, Action, Result**. 
-                <div className="mt-3 p-4 bg-white/5 rounded-xl border border-white/5 text-blue-400 italic leading-relaxed">
-                  "I am an Operations Manager (Context), generate a duty roster template (Action) for 50 bus drivers with SOC monitoring (Result)."
+          <div className="space-y-12 max-w-3xl relative z-10">
+            <div className="flex gap-8">
+              <div className="w-12 h-12 rounded-2xl bg-blue-600 flex items-center justify-center font-black text-white shrink-0 shadow-2xl shadow-blue-600/40">1</div>
+              <div>
+                <h3 className="text-xl font-bold mb-3">Contextual Action Result (CAR)</h3>
+                <p className="text-gray-400 text-sm leading-relaxed mb-6">
+                  For optimal generation, your prompt should contain your professional persona, the specific action required, and the tech-stack result.
+                </p>
+                <div className="bg-black/60 border border-white/5 p-6 rounded-2xl font-mono text-xs md:text-sm text-blue-300 italic shadow-inner select-all">
+                  "As a <span className="text-white font-bold underline">SaaS Founder</span>, generate a <span className="text-white font-bold underline">Subscription Logic</span> using <span className="text-white font-bold underline">Stripe and Drizzle</span>."
                 </div>
               </div>
             </div>
 
-            <div>
-              <h3 className="text-white font-semibold mb-2 flex items-start gap-3">
-                <CheckCircle2 size={18} className="text-blue-500 mt-0.5 shrink-0" />
-                <span>Step 2: Initialize the Vibe</span>
-              </h3>
-              <p className="text-gray-400 text-sm ml-8 md:ml-9 leading-relaxed">
-                Paste your prompt in the Playground. Wait for the status indicator to complete. 
-                Your first version (**V1: Initial Vibe**) will be saved to your sidebar history automatically.
-              </p>
-            </div>
-
-            <div>
-              <h3 className="text-white font-semibold mb-2 flex items-start gap-3">
-                <CheckCircle2 size={18} className="text-blue-500 mt-0.5 shrink-0" />
-                <span>Step 3: Review & Iterate</span>
-              </h3>
-              <p className="text-gray-400 text-sm ml-8 md:ml-9 leading-relaxed">
-                Navigate through the 7 generated milestones. If steps need technical adjustment, 
-                simply update the prompt. The system will branch into **V2**, preserving your original V1.
-              </p>
+            <div className="flex gap-8">
+              <div className="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center font-black text-white shrink-0">2</div>
+              <div>
+                <h3 className="text-xl font-bold mb-3">Version Branching</h3>
+                <p className="text-gray-400 text-sm leading-relaxed">
+                  Every update to your "Vibe" creates a new version in the Inquiry table. 
+                  You can jump between <span className="text-white font-bold">V1 (Initial)</span> and <span className="text-white font-bold">V2 (Refined)</span> without losing data.
+                </p>
+              </div>
             </div>
           </div>
         </section>
 
-        {/* 3. System Access & Roles */}
-        <section className="mb-12 md:mb-16">
-          <h2 className="text-xl md:text-2xl font-semibold mb-6 flex items-center gap-2">
+        {/* Technical Permissions & RBAC */}
+        <section className="mb-24">
+          <h2 className="text-2xl font-black mb-10 flex items-center gap-3">
             <ShieldCheck className="text-green-500" />
-            Permissions & Roles
+            Security & Governance
           </h2>
-          <div className="bg-[#161617] border border-white/5 rounded-2xl md:rounded-3xl overflow-hidden">
-            <div className="overflow-x-auto custom-scrollbar">
-              <table className="w-full text-left text-sm min-w-[450px]">
-                <thead className="bg-white/5 text-gray-400 uppercase text-[10px] tracking-widest">
+          <div className="bg-[#111] border border-white/5 rounded-[2.5rem] overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm min-w-[600px]">
+                <thead className="bg-white/5 text-gray-500 font-black uppercase text-[10px] tracking-[0.2em]">
                   <tr>
-                    <th className="p-4 md:p-5">Role</th>
-                    <th className="p-4 md:p-5">Capabilities</th>
+                    <th className="p-8">Role Type</th>
+                    <th className="p-8">Capabilities</th>
+                    <th className="p-8">Credits</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/5">
-                  <tr>
-                    <td className="p-4 md:p-5 font-bold">Standard User</td>
-                    <td className="p-4 md:p-5 text-gray-400 text-xs md:text-sm">Create Vibes, View Personal History, Update Versions.</td>
+                  <tr className="hover:bg-white/[0.02] transition-colors">
+                    <td className="p-8 font-black text-gray-200 uppercase tracking-tighter">Standard User</td>
+                    <td className="p-8 text-gray-500 text-xs leading-relaxed">Create, Version, and Publish Vibes. Access to Public Feed.</td>
+                    <td className="p-8 text-blue-400 font-bold">5 Initial</td>
                   </tr>
-                  <tr>
-                    <td className="p-4 md:p-5 font-bold text-blue-400">Admin</td>
-                    <td className="p-4 md:p-5 text-gray-400 text-xs md:text-sm">All User rights + System Activity Monitoring and User Management.</td>
+                  <tr className="hover:bg-white/[0.02] transition-colors">
+                    <td className="p-8 font-black text-blue-500 uppercase tracking-tighter">System Admin</td>
+                    <td className="p-8 text-gray-500 text-xs leading-relaxed">Database Mutation, Credit Override, System Analytics.</td>
+                    <td className="p-8 text-purple-400 font-bold">Unlimited</td>
                   </tr>
                 </tbody>
               </table>
@@ -147,15 +175,22 @@ export default function DocumentationPage() {
           </div>
         </section>
 
-        {/* Footer Link */}
-        <footer className="pt-8 md:pt-12 border-t border-white/5 text-center">
-          <p className="text-gray-500 text-sm mb-6">Ready to begin your first session?</p>
+        {/* Final CTA Footer */}
+        <footer className="pt-20 border-t border-white/5 text-center">
+          <p className="text-gray-500 text-[10px] font-black uppercase tracking-[0.5em] mb-10">Start Your Development Cycle</p>
           <Link 
             href="/playground" 
-            className="inline-flex items-center justify-center gap-2 bg-white text-black w-full md:w-auto px-8 py-4 rounded-xl md:rounded-2xl font-bold hover:bg-blue-50 transition-all shadow-lg active:scale-95"
+            className="group relative inline-flex items-center justify-center gap-3 bg-white text-black px-14 py-6 rounded-2xl font-black text-xs uppercase tracking-[0.2em] transition-all hover:bg-blue-50 active:scale-95 shadow-[0_20px_60px_rgba(255,255,255,0.05)]"
           >
-            Launch Playground <ArrowRight size={18} />
+            Launch Environment <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
           </Link>
+          <div className="mt-16 text-[10px] text-gray-700 font-bold uppercase tracking-widest flex items-center justify-center gap-4">
+            <span>© 2026 Sandeep Kumar</span>
+            <span className="w-1 h-1 bg-gray-800 rounded-full" />
+            <span>Apache 2.0 License</span>
+            <span className="w-1 h-1 bg-gray-800 rounded-full" />
+            <span>v0.1.0-STABLE</span>
+          </div>
         </footer>
       </main>
     </div>

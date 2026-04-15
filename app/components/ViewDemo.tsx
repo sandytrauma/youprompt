@@ -1,6 +1,12 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+/**
+ * Copyright 2026 Sandeep Kumar
+ * Interactive Simulation Engine v4.2
+ * Patches: Interval Memory Safety, Body Scroll Locking, and Keyboard Access.
+ */
+
+import React, { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { 
@@ -28,78 +34,119 @@ export default function DemoModal({ isOpen, onClose }: DemoModalProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [showRisk, setShowRisk] = useState(false);
 
+  // 1. Body Scroll Locking & ESC Key Handling
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = "hidden";
+      const handleEsc = (e: KeyboardEvent) => {
+        if (e.key === "Escape") onClose();
+      };
+      window.addEventListener("keydown", handleEsc);
+      return () => {
+        document.body.style.overflow = "unset";
+        window.removeEventListener("keydown", handleEsc);
+      };
+    }
+  }, [isOpen, onClose]);
+
+  // 2. Safe Interval Engine
   useEffect(() => {
     let interval: NodeJS.Timeout;
-    if (isPlaying && currentStep < DEMO_STEPS.length) {
-      interval = setInterval(() => {
-        setCurrentStep((prev) => prev + 1);
-        if (currentStep === 2) setShowRisk(true);
-      }, 1200);
-    } else {
-      setIsPlaying(false);
-    }
-    return () => clearInterval(interval);
-  }, [isPlaying, currentStep]);
 
-  const startDemo = () => {
+    if (isPlaying) {
+      interval = setInterval(() => {
+        setCurrentStep((prev) => {
+          const next = prev + 1;
+          if (next >= DEMO_STEPS.length) {
+            setIsPlaying(false);
+            clearInterval(interval);
+            return DEMO_STEPS.length;
+          }
+          if (next === 2) setShowRisk(true);
+          return next;
+        });
+      }, 1400);
+    }
+
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [isPlaying]);
+
+  const startDemo = useCallback(() => {
     setCurrentStep(0);
     setShowRisk(false);
     setIsPlaying(true);
-  };
+  }, []);
 
   return (
-    <AnimatePresence>
+    <AnimatePresence mode="wait">
       {isOpen && (
         <motion.div 
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-6 bg-[#0a0a0a]/90 backdrop-blur-sm"
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-6 bg-black/80 backdrop-blur-md"
+          role="dialog"
+          aria-modal="true"
         >
           <motion.div 
-            initial={{ scale: 0.9, y: 20 }}
-            animate={{ scale: 1, y: 0 }}
-            exit={{ scale: 0.9, y: 20 }}
-            className="relative w-full max-w-5xl bg-[#111] border border-white/10 rounded-[2rem] md:rounded-[3rem] overflow-hidden shadow-2xl flex flex-col max-h-[90vh]"
+            initial={{ scale: 0.95, opacity: 0, y: 20 }}
+            animate={{ scale: 1, opacity: 1, y: 0 }}
+            exit={{ scale: 0.95, opacity: 0, y: 20 }}
+            className="relative w-full max-w-5xl bg-[#0d0d0d] border border-white/10 rounded-[2.5rem] overflow-hidden shadow-[0_0_50px_rgba(0,0,0,0.5)] flex flex-col max-h-[90vh]"
           >
             {/* Modal Header */}
-            <div className="p-6 border-b border-white/5 flex justify-between items-center bg-white/[0.02]">
+            <div className="p-6 border-b border-white/5 flex justify-between items-center bg-white/[0.01]">
               <div className="flex items-center gap-3">
-                <div className="bg-blue-600 p-1.5 rounded-lg">
-                  <Zap size={18} fill="white" />
+                <div className="bg-blue-600 p-2 rounded-xl shadow-lg shadow-blue-600/20">
+                  <Zap size={18} fill="white" className="text-white" />
                 </div>
-                <h3 className="font-bold text-lg">Interactive Workflow Demo</h3>
+                <div>
+                  <h3 className="font-black text-sm uppercase tracking-widest text-white">Simulation</h3>
+                  <p className="text-[10px] text-gray-500 font-bold uppercase tracking-tighter">Architecture Validation Loop</p>
+                </div>
               </div>
-              <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-full transition-colors">
-                <X size={20} />
+              <button 
+                onClick={onClose} 
+                className="p-3 hover:bg-white/10 rounded-full transition-all active:scale-90"
+                aria-label="Close Modal"
+              >
+                <X size={20} className="text-gray-400" />
               </button>
             </div>
 
             {/* Modal Content */}
-            <div className="flex-1 overflow-y-auto p-4 md:p-8">
-              <div className="grid lg:grid-cols-5 gap-8">
-                {/* Left: Input */}
-                <div className="lg:col-span-2 space-y-6">
-                  <div>
-                    <div className="flex items-center gap-2 text-blue-400 mb-4">
-                      <Terminal size={16} />
-                      <span className="text-xs font-bold uppercase tracking-wider">The Input Vibe</span>
+            <div className="flex-1 overflow-y-auto p-6 md:p-10 custom-scrollbar">
+              <div className="grid lg:grid-cols-5 gap-10">
+                {/* Left: Input Console */}
+                <div className="lg:col-span-2 space-y-8">
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2 text-blue-400">
+                      <Terminal size={14} />
+                      <span className="text-[10px] font-black uppercase tracking-[0.2em]">Source Prompt</span>
                     </div>
-                    <div className="bg-black border border-white/10 rounded-2xl p-5 font-mono text-sm text-gray-300 leading-relaxed shadow-inner">
-                      "Create a <span className="text-blue-400">Task Management System</span> for an advocate firm. Needs a <span className="text-purple-400">Drizzle schema</span> for clients, real-time <span className="text-green-400">inquiry tracking</span>, and automated <span className="text-yellow-400">document status</span> updates."
+                    <div className="bg-black/50 border border-white/5 rounded-3xl p-6 font-mono text-[13px] text-gray-400 leading-relaxed shadow-inner">
+                      "Develop a <span className="text-blue-400 font-bold">Task Management System</span> for high-scale firms. Apply <span className="text-purple-400">Drizzle schema</span> for relational data and <span className="text-green-400">WebSocket</span> sync."
                     </div>
                   </div>
 
                   <AnimatePresence>
                     {showRisk && (
-                      <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} className="bg-red-500/10 border border-red-500/20 rounded-2xl p-5">
+                      <motion.div 
+                        initial={{ opacity: 0, y: 10 }} 
+                        animate={{ opacity: 1, y: 0 }}
+                        className="bg-red-500/5 border border-red-500/20 rounded-2xl p-5"
+                      >
                         <div className="flex gap-4">
-                          <AlertTriangle className="text-red-500 shrink-0" size={20} />
+                          <div className="p-2 bg-red-500/20 rounded-lg shrink-0 h-fit">
+                            <AlertTriangle className="text-red-500" size={18} />
+                          </div>
                           <div>
-                            <p className="text-xs font-bold text-red-400 uppercase mb-1">Emergent Risk Found</p>
-                            <p className="text-xs text-gray-400 leading-snug">
-                              Standard DB pooling will lag under high load.
-                              <span className="text-red-400 block mt-2 font-bold underline italic">Fix: Step 3 updated with WebSocket architecture.</span>
+                            <p className="text-[10px] font-black text-red-500 uppercase mb-1">Bottleneck Detected</p>
+                            <p className="text-xs text-gray-500 leading-relaxed">
+                              Standard pooling identified as failure point. <br />
+                              <span className="text-white font-bold underline decoration-red-500/50">Auto-injecting WebSocket failover.</span>
                             </p>
                           </div>
                         </div>
@@ -107,64 +154,71 @@ export default function DemoModal({ isOpen, onClose }: DemoModalProps) {
                     )}
                   </AnimatePresence>
 
-                  {!isPlaying && currentStep === 0 && (
-                    <button onClick={startDemo} className="w-full py-4 bg-white text-black font-bold rounded-xl flex items-center justify-center gap-2 hover:bg-gray-200 transition-all shadow-lg">
-                      <Play size={18} fill="currentColor" /> Run Simulation
-                    </button>
-                  )}
-                  
-                  {currentStep === DEMO_STEPS.length && (
-                    <button onClick={startDemo} className="w-full py-4 bg-white/5 border border-white/10 text-white font-bold rounded-xl flex items-center justify-center gap-2 hover:bg-white/10 transition-all">
-                      <RefreshCcw size={18} /> Restart Demo
-                    </button>
-                  )}
+                  <div className="pt-4">
+                    {!isPlaying && (
+                      <button 
+                        onClick={startDemo} 
+                        className="w-full py-4 bg-white text-black font-black text-xs uppercase tracking-[0.2em] rounded-2xl flex items-center justify-center gap-3 hover:bg-blue-50 transition-all shadow-xl active:scale-[0.98]"
+                      >
+                        {currentStep > 0 ? <><RefreshCcw size={16} /> Re-Run Analysis</> : <><Play size={16} fill="black" /> Initialize Simulation</>}
+                      </button>
+                    )}
+                  </div>
                 </div>
 
-                {/* Right: Steps */}
+                {/* Right: Steps Progression */}
                 <div className="lg:col-span-3 space-y-3">
-                  {DEMO_STEPS.map((step, index) => (
-                    <motion.div
-                      key={step.id}
-                      animate={{ 
-                        opacity: index <= currentStep ? 1 : 0.3,
-                        scale: index === currentStep ? 1.02 : 1,
-                        x: index === currentStep ? 8 : 0
-                      }}
-                      className={`p-4 rounded-2xl border transition-all ${
-                        index === currentStep ? "bg-blue-600/10 border-blue-500/40" : "bg-white/[0.02] border-white/[0.05]"
-                      }`}
-                    >
-                      <div className="flex items-start gap-4">
-                        <div className={`mt-0.5 w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${index < currentStep ? "bg-blue-600 text-white" : "bg-white/10 text-gray-500"}`}>
-                          {index < currentStep ? <CheckCircle2 size={14} /> : step.id}
-                        </div>
-                        <div className="flex-1">
-                          <h4 className={`text-sm font-bold ${index === currentStep ? "text-blue-400" : "text-gray-300"}`}>{step.title}</h4>
-                          {index <= currentStep && <p className="text-xs text-gray-500 mt-1">{step.desc}</p>}
-                        </div>
-                        {index === currentStep && isPlaying && (
-                          <div className="flex gap-1 pt-1">
-                            <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce [animation-delay:-0.3s]" />
-                            <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce [animation-delay:-0.15s]" />
-                            <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce" />
+                  {DEMO_STEPS.map((step, index) => {
+                    const isCompleted = index < currentStep;
+                    const isActive = index === currentStep;
+
+                    return (
+                      <motion.div
+                        key={step.id}
+                        initial={false}
+                        animate={{ 
+                          opacity: index <= currentStep ? 1 : 0.2,
+                          x: isActive ? 10 : 0,
+                          scale: isActive ? 1.01 : 1
+                        }}
+                        className={`p-5 rounded-2xl border transition-all duration-500 ${
+                          isActive ? "bg-blue-600/5 border-blue-500/30 shadow-[0_0_20px_rgba(37,99,235,0.05)]" : "bg-white/[0.02] border-white/5"
+                        }`}
+                      >
+                        <div className="flex items-start gap-4">
+                          <div className={`mt-0.5 w-7 h-7 rounded-xl flex items-center justify-center text-[10px] font-black shrink-0 transition-colors duration-500 ${isCompleted ? "bg-blue-600 text-white shadow-lg shadow-blue-600/30" : "bg-white/5 text-gray-600"}`}>
+                            {isCompleted ? <CheckCircle2 size={14} /> : step.id}
                           </div>
-                        )}
-                      </div>
-                    </motion.div>
-                  ))}
+                          <div className="flex-1">
+                            <h4 className={`text-xs font-black uppercase tracking-widest ${isActive ? "text-blue-400" : "text-gray-400"}`}>
+                              {step.title}
+                            </h4>
+                            {index <= currentStep && (
+                              <p className="text-[11px] text-gray-500 mt-1 font-medium leading-relaxed">{step.desc}</p>
+                            )}
+                          </div>
+                          {isActive && isPlaying && (
+                            <div className="flex gap-1 pt-1.5">
+                              <span className="w-1 h-1 bg-blue-500 rounded-full animate-ping" />
+                            </div>
+                          )}
+                        </div>
+                      </motion.div>
+                    );
+                  })}
                 </div>
               </div>
             </div>
 
             {/* Modal Footer */}
-            <div className="p-6 bg-white/[0.02] border-t border-white/5 flex flex-col sm:flex-row items-center justify-between gap-4">
-              <div className="flex items-center gap-4 text-xs text-gray-500 font-medium">
-                <span className="flex items-center gap-1.5"><ShieldAlert size={14} className="text-green-500" /> Architecture Verified</span>
-                <span className="flex items-center gap-1.5"><Code2 size={14} className="text-purple-500" /> Next.js Optimized</span>
+            <div className="p-8 bg-black border-t border-white/5 flex flex-col sm:flex-row items-center justify-between gap-6">
+              <div className="flex items-center gap-6 text-[10px] text-gray-500 font-black uppercase tracking-tighter">
+                <span className="flex items-center gap-2"><ShieldAlert size={14} className="text-green-500" /> Secure Protocol</span>
+                <span className="flex items-center gap-2"><Code2 size={14} className="text-blue-500" /> Edge Optimized</span>
               </div>
               <Link href="/playground" className="w-full sm:w-auto">
-                <button className="w-full sm:w-auto px-8 py-3 bg-blue-600 text-white font-bold rounded-xl transition-all shadow-lg">
-                  Start Coding This Project
+                <button className="w-full sm:w-auto px-10 py-4 bg-blue-600 text-white font-black text-xs uppercase tracking-[0.2em] rounded-2xl transition-all shadow-[0_10px_30px_rgba(37,99,235,0.3)] hover:bg-blue-500 hover:-translate-y-1 active:scale-95">
+                  Launch Environment
                 </button>
               </Link>
             </div>

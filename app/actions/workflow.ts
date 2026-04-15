@@ -1,51 +1,69 @@
 /**
  * Copyright 2026 Sandeep Kumar
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * YouPrompt Workflow Engine v3.4 - Production Hardened
+ * Fixes: Turbopack Export Stability, Neon-HTTP Sequential Flow, RAG Injection
  */
 
 "use server";
 
 import { db } from "@/db";
-import { documents, inquiries, tasks, users } from "@/db/schema";
-import { generateVibeWorkflow } from "@/lib/gemini";
+import { documents, inquiries, tasks, users, vibes } from "@/db/schema";
+import { generateVibeWorkflow } from "./ai-engine"; 
 import { authOptions } from "@/lib/auth";
 import { getServerSession } from "next-auth";
 import { revalidatePath } from "next/cache";
-import { desc, eq, or, sql } from "drizzle-orm";
+import { desc, eq, and, sql, gt } from "drizzle-orm";
+import { sanitizeInput } from "@/lib/sanitizer";
 
-// 1 Credit per generation/edit
-const VIBE_COST = 1;
+// --- TYPE DEFINITIONS ---
+export type Step = {
+  objective: string;
+  procedures: string[];
+  precisePrompt: string;
+  id?: number;
+};
 
-type ActionResponse = {
+export type ActionResponse = {
   success: boolean;
-  steps?: any[];
+  steps?: Step[];
   inquiryId?: string;
   version?: number;
   error?: string;
   emergentContent?: string;
-  newCreditBalance?: number; // Added to help UI sync
+  newCreditBalance?: number;
 };
 
+const VIBE_COST = 1;
+
 /**
- * 1. Fetch all historical "Vibes" for the current logged-in user.
+ * 1. RAG: TECHNICAL CONTEXT RETRIEVAL
+ * Grounding AI in your specific background (EV, Fleet, Drizzle, etc.)
+ */
+export async function getRelevantContext(userId: string) {
+  try {
+    const relatedDocs = await db.query.documents.findMany({
+      where: and(
+        eq(documents.userId, userId),
+        eq(documents.category, "technical")
+      ),
+      limit: 3,
+    });
+
+    return relatedDocs.length > 0
+      ? relatedDocs.map((d) => d.content).join("\n\n")
+      : "";
+  } catch (error) {
+    console.error("[WORKFLOW] Context Fetch Error:", error);
+    return "";
+  }
+}
+
+/**
+ * 2. FETCH USER HISTORY
  */
 export async function getAllUserInquiries() {
   const session = await getServerSession(authOptions);
-  
-  if (!session?.user?.id) {
-    return [];
-  }
+  if (!session?.user?.id) return [];
 
   try {
     return await db
@@ -56,7 +74,8 @@ export async function getAllUserInquiries() {
       })
       .from(inquiries)
       .where(eq(inquiries.userId, session.user.id))
-      .orderBy(desc(inquiries.createdAt));
+      .orderBy(desc(inquiries.createdAt))
+      .limit(50);
   } catch (error) {
     console.error("Failed to fetch user history:", error);
     return [];
@@ -64,96 +83,81 @@ export async function getAllUserInquiries() {
 }
 
 /**
- * 2. Generate a brand new Vibe (Inquiry + Task V1).
- * Production Ready: Includes Credit Checks & Deductions
+ * 3. CREATE NEW VIBE
+ * Sequential logic ensures Neon-HTTP compatibility.
  */
 export async function createNewVibe(prompt: string): Promise<ActionResponse> {
   const session = await getServerSession(authOptions);
-  
-  if (!session?.user?.id) {
-    return { success: false, error: "Authentication required." };
-  }
+  if (!session?.user?.id) return { success: false, error: "Authentication required." };
+
+  const cleanPrompt = sanitizeInput(prompt, "text");
 
   try {
-    // A. Credit Check
-    const [userRecord] = await db
-      .select({ credits: users.credits })
-      .from(users)
-      .where(eq(users.id, session.user.id));
+    // A. Context Augmentation
+    const context = await getRelevantContext(session.user.id);
+    const augmentedPrompt = context 
+      ? `CONTEXT:\n${context}\n\nUSER_REQUEST:\n${cleanPrompt}` 
+      : cleanPrompt;
 
-    if (!userRecord || (userRecord.credits ?? 0) < VIBE_COST) {
-      return { 
-        success: false, 
-        error: "Insufficient Vibes! Please refill your credits in the dashboard." 
-      };
+    // B. AI Generation
+    const aiResponse = await generateVibeWorkflow(augmentedPrompt);
+
+    // C. Sequential DB Logic
+    // 1. Credit Gatekeeper
+    const [updatedUser] = await db
+      .update(users)
+      .set({ credits: sql`${users.credits} - ${VIBE_COST}` })
+      .where(and(eq(users.id, session.user.id), gt(users.credits, 0)))
+      .returning({ credits: users.credits });
+
+    if (!updatedUser) {
+      return { success: false, error: "Insufficient Credits." };
     }
 
-    // B. AI Generation (Call this before DB changes to avoid charging for failed AI)
-    const aiResponse = await generateVibeWorkflow(prompt);
-
-    // C. Create the Inquiry (Parent)
+    // 2. Insert Inquiry (Parent)
     const [newInquiry] = await db.insert(inquiries).values({
       userId: session.user.id,
-      title: prompt.substring(0, 50) || "New Vibe",
+      title: cleanPrompt.substring(0, 50) || "New Vibe",
     }).returning();
 
-    if (!newInquiry) {
-      throw new Error("Critical: Failed to create inquiry record.");
-    }
-
-    // D. Create the first Task (Child V1)
+    // 3. Insert Task (V1)
     await db.insert(tasks).values({
       inquiryId: newInquiry.id,
-      versionName: "V1: Initial Vibe",
+      versionName: "V1: Initial Synthesis",
       steps: aiResponse.steps, 
       emergentContent: aiResponse.emergentContent, 
       version: 1,
     });
 
-    // E. Deduct Credits
-    const [updatedUser] = await db
-      .update(users)
-      .set({
-        credits: sql`${users.credits} - ${VIBE_COST}`
-      })
-      .where(eq(users.id, session.user.id))
-      .returning({ credits: users.credits });
-
     revalidatePath("/playground");
-    revalidatePath("/admin"); 
     
     return { 
       success: true, 
-      steps: aiResponse.steps, 
+      steps: aiResponse.steps as Step[], 
       emergentContent: aiResponse.emergentContent,
       inquiryId: newInquiry.id,
-      newCreditBalance: updatedUser.credits ?? 0
+      newCreditBalance: updatedUser.credits ?? 0,
+      version: 1
     };
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Vibe Generation Error:", error);
-    return { 
-      success: false, 
-      error: "The AI encountered an error while architecting your vibe. Try again." 
-    };
+    return { success: false, error: "Synthesis failed. Please try again." };
   }
 }
 
 /**
- * 3. Fetch the results for a specific history item from the DB.
+ * 4. FETCH VIBE HISTORY (Deep Dive)
  */
 export async function getVibeHistory(inquiryId: string) {
   const session = await getServerSession(authOptions);
-  
   if (!session?.user?.id) return null;
 
   try {
     const result = await db.query.tasks.findFirst({
       where: eq(tasks.inquiryId, inquiryId),
       orderBy: [desc(tasks.version)],
-      with: {
-        inquiry: true, 
-      },
+      with: { inquiry: true },
     });
 
     if (!result || result.inquiry?.userId !== session.user.id) {
@@ -162,11 +166,10 @@ export async function getVibeHistory(inquiryId: string) {
 
     return {
       id: result.id,
-      steps: result.steps, 
+      steps: (result.steps as Step[]) || [], 
       emergentContent: result.emergentContent,
       version: result.version,
       createdAt: result.createdAt,
-      isPublic: false, 
     };
   } catch (error) {
     console.error("Error in getVibeHistory:", error);
@@ -174,12 +177,12 @@ export async function getVibeHistory(inquiryId: string) {
   }
 }
 
-
-import { vibes } from "@/db/schema"; // Import your vibes table
-
+/**
+ * 5. PUBLIC VIBE RETRIEVAL
+ * Checks the dedicated 'vibes' table for community roadmaps.
+ */
 export async function getPublicVibe(id: string) {
   try {
-    // 1. Try Vibes table first (since you are sharing Vibe IDs)
     const vibeResult = await db.query.vibes.findFirst({
       where: eq(vibes.id, id),
     });
@@ -193,34 +196,14 @@ export async function getPublicVibe(id: string) {
         type: 'vibe'
       };
     }
-
-    // 2. Fallback to Tasks if not found in Vibes
-    const taskResult = await db.query.tasks.findFirst({
-      where: or(eq(tasks.id, id), eq(tasks.inquiryId, id)),
-      orderBy: [desc(tasks.version)],
-      with: { inquiry: true },
-    });
-
-    if (taskResult && taskResult.inquiry) {
-      return {
-        id: taskResult.id,
-        title: taskResult.inquiry.title,
-        steps: taskResult.steps,
-        createdAt: taskResult.createdAt,
-        type: 'task'
-      };
-    }
-
     return null;
   } catch (error) {
-    console.error("Database Error:", error);
     return null;
   }
 }
 
 /**
- * 4. Edit an existing Vibe and save it as a new version.
- * Production Ready: Credits applied for iterations.
+ * 6. UPDATE VIBE VERSION (Iterations)
  */
 export async function updateVibeVersion(
   id: string, 
@@ -228,26 +211,23 @@ export async function updateVibeVersion(
   version: number
 ): Promise<ActionResponse> {
   const session = await getServerSession(authOptions);
-  
-  if (!session?.user?.id) {
-    return { success: false, error: "Unauthorized" };
-  }
+  if (!session?.user?.id) return { success: false, error: "Unauthorized" };
 
   try {
-    // A. Credit Check
-    const [userRecord] = await db
-      .select({ credits: users.credits })
-      .from(users)
-      .where(eq(users.id, session.user.id));
+    const context = await getRelevantContext(session.user.id);
+    const aiResponse = await generateVibeWorkflow(`${context}\n\n${prompt}`);
+    
+    // Sequential Credits
+    const [updatedUser] = await db
+      .update(users)
+      .set({ credits: sql`${users.credits} - ${VIBE_COST}` })
+      .where(and(eq(users.id, session.user.id), gt(users.credits, 0)))
+      .returning({ credits: users.credits });
 
-    if (!userRecord || (userRecord.credits ?? 0) < VIBE_COST) {
+    if (!updatedUser) {
       return { success: false, error: "Insufficient credits for an update." };
     }
 
-    // B. AI Generation for the update
-    const aiResponse = await generateVibeWorkflow(prompt);
-    
-    // C. Insert new version
     const [newTask] = await db.insert(tasks).values({
       inquiryId: id,
       versionName: `V${version + 1}: Edited Vibe`,
@@ -256,41 +236,71 @@ export async function updateVibeVersion(
       version: version + 1,
     }).returning();
 
-    // D. Deduct Credits
-    const [updatedUser] = await db
-      .update(users)
-      .set({
-        credits: sql`${users.credits} - ${VIBE_COST}`
-      })
-      .where(eq(users.id, session.user.id))
-      .returning({ credits: users.credits });
-    
     revalidatePath("/playground");
     
     return { 
       success: true, 
-      steps: aiResponse.steps, 
+      steps: aiResponse.steps as Step[], 
       emergentContent: aiResponse.emergentContent,
       version: newTask.version ?? (version + 1),
       newCreditBalance: updatedUser.credits ?? 0
     };
   } catch (error) {
     console.error("Update Version Error:", error);
-    return { 
-      success: false, 
-      error: "Failed to update version." 
-    };
+    return { success: false, error: "Failed to update version." };
   }
 }
 
-// Example Logic for retrieval
-async function getRelevantContext(userInput: string) {
-  // Search the 'documents' table where category = 'technical'
-  // and content matches keywords from userInput
-  const relatedDocs = await db.select()
-    .from(documents)
-    .where(eq(documents.category, 'technical'))
-    .limit(3); 
-    
-  return relatedDocs.map(d => d.content).join("\n\n");
+/**
+ * 7. TOGGLE VIBE PUBLIC STATUS
+ * Mirroring strategy: Syncs data to 'vibes' table for community visibility.
+ */
+export async function toggleVibePublic(inquiryId: string, isPublic: boolean) {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.id) return { success: false, error: "Unauthorized" };
+
+  try {
+    if (isPublic) {
+      // 1. Fetch the data from your private tables
+      const latestTask = await db.query.tasks.findFirst({
+        where: eq(tasks.inquiryId, inquiryId),
+        orderBy: [desc(tasks.version)],
+        with: { inquiry: true }
+      });
+
+      if (!latestTask || latestTask.inquiry?.userId !== session.user.id) {
+        return { success: false, error: "Vibe not found or unauthorized." };
+      }
+
+      // 2. Insert into 'vibes' table using the correct schema keys
+      await db.insert(vibes).values({
+        id: inquiryId,             // Matches UUID/String ID
+        creatorId: session.user.id, // Fixed: This is your schema's key for the user
+        title: latestTask.inquiry.title,
+        prompt: latestTask.inquiry.title, // Assuming prompt is the original input
+        steps: latestTask.steps,    // The JSON array of steps
+        // createdAt is usually handled by defaultNow() in DB
+      }).onConflictDoUpdate({
+        target: vibes.id,
+        set: { 
+          steps: latestTask.steps, 
+          title: latestTask.inquiry.title,
+          // Update prompt if necessary
+        }
+      });
+
+    } else {
+      // UNPUBLISHING: Remove from the public gallery
+      await db.delete(vibes).where(and(
+        eq(vibes.id, inquiryId),
+        eq(vibes.creatorId, session.user.id)
+      ));
+    }
+
+    revalidatePath("/explore");
+    return { success: true };
+  } catch (error) {
+    console.error("Toggle Public Error:", error);
+    return { success: false, error: "Failed to update sharing status." };
+  }
 }

@@ -4,8 +4,21 @@ import VibeClientView from "./VibeClientView";
 
 export const dynamic = 'force-dynamic';
 
-export default async function SharedVibePage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
+interface SharedPageProps {
+  params: Promise<{ id: string }>;
+}
+
+export default async function SharedVibePage({ params }: SharedPageProps) {
+  // 1. Await the params object
+  const resolvedParams = await params;
+  const id = resolvedParams?.id;
+
+  // 2. Type Guard: Handle potential null/undefined to satisfy TypeScript
+  if (!id) {
+    notFound();
+  }
+
+  // 3. Database Fetch
   const vibe = await getPublicVibe(id);
 
   if (!vibe) {

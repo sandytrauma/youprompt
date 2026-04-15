@@ -1,24 +1,27 @@
 /**
  * Copyright 2026 Sandeep Kumar
  * Licensed under the Apache License, Version 2.0
+ * Production-Ready: Implements XSS Protection, Sanitization, and Fault Tolerance.
  */
 
 import { db } from "@/db";
-import { vibes, subscriptions, comments, users } from "@/db/schema";
+import { vibes, subscriptions, comments } from "@/db/schema";
 import { desc, eq, count, inArray } from "drizzle-orm";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { VibeInteractions } from "../components/SocialActions";
 import { ClaimCreditsOverlay } from "../components/ClaimCreditsOverlay";
 import { ShareTemplateButton } from "../components/ShareTemplateButton";
-import { redirect } from "next/navigation";
 import Link from "next/link";
 import { Metadata } from "next";
 import { 
-  ChevronLeft, Sparkles, Terminal, MessageSquare, 
+  ChevronLeft, Terminal, MessageSquare, 
   PlusCircle, TrendingUp, Newspaper, 
   ShieldCheck, Zap, Globe, Users
 } from "lucide-react";
+
+// Security: Use a robust sanitization pattern for User Generated Content (UGC)
+import ismorphicDomPurify from "isomorphic-dompurify";
 
 interface Step {
   objective: string;
@@ -39,6 +42,14 @@ export async function generateMetadata(): Promise<Metadata> {
     },
   };
 }
+
+/**
+ * Security Note: Sanitizes strings to prevent XSS while preserving newlines
+ */
+const sanitizeUGC = (content: string | null | undefined) => {
+  if (!content) return "";
+  return ismorphicDomPurify.sanitize(content);
+};
 
 const MockAdSlot = ({ isGuest }: { isGuest: boolean }) => {
   const ads = [
@@ -70,7 +81,7 @@ const MockAdSlot = ({ isGuest }: { isGuest: boolean }) => {
         <h3 className="text-xl font-black text-white mb-2 leading-tight">{ad.title}</h3>
         <p className="text-[11px] text-gray-400 leading-relaxed font-medium">{ad.desc}</p>
       </div>
-      <button className="relative z-10 w-full py-4 bg-white/5 hover:bg-white text-white hover:text-black border border-white/10 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95">
+      <button type="button" className="relative z-10 w-full py-4 bg-white/5 hover:bg-white text-white hover:text-black border border-white/10 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95">
         {ad.btn}
       </button>
     </div>
@@ -89,9 +100,11 @@ export default async function ExplorePage() {
         comments: {
           with: { author: true },
           orderBy: [desc(comments.createdAt)],
+          limit: 20, // Optimization: Prevent huge DOM payload
         },
       },
       orderBy: [desc(vibes.createdAt)],
+      limit: 50, // Guard against table-scans
     });
 
     const authorIds = Array.from(new Set(allVibes.map(v => v.creatorId).filter(Boolean))) as string[];
@@ -116,9 +129,9 @@ export default async function ExplorePage() {
       const subRes = await db.query.subscriptions.findMany({ where: eq(subscriptions.followerId, currentUserId) });
       const [follRes] = await db.select({ value: count() }).from(subscriptions).where(eq(subscriptions.followingId, currentUserId));
       
-      userVibesCount = vibeRes.value;
-      userFollowingCount = subRes.length;
-      userFollowerCount = follRes.value;
+      userVibesCount = vibeRes?.value || 0;
+      userFollowingCount = subRes?.length || 0;
+      userFollowerCount = follRes?.value || 0;
       followingIds = new Set(subRes.map(s => s.followingId));
     }
 
@@ -147,8 +160,12 @@ export default async function ExplorePage() {
           <aside className="hidden lg:flex flex-col w-[320px] p-8 space-y-6 overflow-y-auto border-r border-white/5 shrink-0 custom-scrollbar">
             <div className="bg-white/[0.02] border border-white/10 rounded-[2.5rem] p-8">
               <div className="flex flex-col items-center text-center space-y-5">
-                <div className="w-20 h-20 rounded-[2rem] bg-gradient-to-br from-blue-600 to-purple-700 flex items-center justify-center text-3xl font-black border border-white/20 shadow-2xl">
-                  {session?.user?.name?.charAt(0) || "U"}
+                <div className="w-20 h-20 rounded-[2rem] bg-gradient-to-br from-blue-600 to-purple-700 flex items-center justify-center text-3xl font-black border border-white/20 shadow-2xl overflow-hidden">
+                  {session?.user?.image ? (
+                    <img src={session.user.image} alt="" className="w-full h-full object-cover" />
+                  ) : (
+                    session?.user?.name?.charAt(0) || "U"
+                  )}
                 </div>
                 <div>
                   <h2 className="text-lg font-black tracking-tight truncate w-40">{session?.user?.name || "Guest User"}</h2>
@@ -207,19 +224,22 @@ export default async function ExplorePage() {
 
                 const workflowSteps = (vibe.steps as Step[]) || [];
                 const fullMasterPrompt = workflowSteps.map((s, i) => 
-                  `### STEP ${i + 1}: ${s.objective?.toUpperCase()}\n${s.precisePrompt}`
+                  `### STEP ${i + 1}: ${sanitizeUGC(s.objective?.toUpperCase())}\n${sanitizeUGC(s.precisePrompt)}`
                 ).join("\n\n---\n\n");
 
                 return (
                   <article key={vibe.id} className="bg-white/[0.02] border border-white/10 rounded-[2.5rem] p-6 sm:p-10 hover:bg-white/[0.03] transition-colors border-l-4 border-l-transparent hover:border-l-blue-600 relative group">
                     
-                    {/* Client-side Share Button */}
                     <ShareTemplateButton vibeId={vibe.id} vibeTitle={vibe.title ?? ""} />
 
                     <div className="flex items-center justify-between mb-8">
                         <div className="flex items-center gap-4">
-                            <div className="w-10 h-10 rounded-2xl bg-gray-900 border border-white/10 flex items-center justify-center font-black text-blue-500 text-sm">
-                                {vibe.author?.name?.charAt(0)}
+                            <div className="w-10 h-10 rounded-2xl bg-gray-900 border border-white/10 flex items-center justify-center font-black text-blue-500 text-sm overflow-hidden">
+                                {vibe.author?.image ? (
+                                  <img src={vibe.author.image} alt="" className="w-full h-full object-cover" />
+                                ) : (
+                                  vibe.author?.name?.charAt(0)
+                                )}
                             </div>
                             <div>
                                 <h4 className="text-sm font-bold text-white tracking-tight leading-none mb-1">{vibe.author?.name}</h4>
@@ -238,11 +258,11 @@ export default async function ExplorePage() {
                     </div>
 
                     <h3 className="text-2xl sm:text-3xl font-black mb-6 tracking-tighter leading-tight">
-                      {vibe.title}
+                      {sanitizeUGC(vibe.title)}
                     </h3>
                     
                     <div className="bg-white/[0.03] border border-white/5 p-5 rounded-2xl mb-8 font-mono text-[11px] text-gray-400 leading-relaxed italic border-l-2 border-l-blue-500/50">
-                      {vibe.prompt}
+                      {sanitizeUGC(vibe.prompt)}
                     </div>
 
                     <div className="bg-black/60 rounded-[2rem] border border-white/5 p-6 sm:p-8 max-h-[350px] overflow-y-auto custom-scrollbar mb-10">
@@ -251,7 +271,6 @@ export default async function ExplorePage() {
                       </pre>
                     </div>
 
-                    {/* Vibe Interactions */}
                     <div className="pt-8 border-t border-white/5">
                       <VibeInteractions
                         vibeId={vibe.id}
@@ -263,7 +282,6 @@ export default async function ExplorePage() {
                       />
                     </div>
 
-                    {/* Discussion Thread Section (RESTORED) */}
                     {vibe.comments && vibe.comments.length > 0 && (
                       <div className="mt-8 space-y-4 pt-8 border-t border-white/5">
                         <div className="flex items-center gap-2 text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2">
@@ -278,7 +296,7 @@ export default async function ExplorePage() {
                               </span>
                             </div>
                             <p className="text-xs text-gray-300 leading-relaxed break-words">
-                              {comment.content}
+                              {sanitizeUGC(comment.content)}
                             </p>
                           </div>
                         ))}
@@ -323,6 +341,7 @@ export default async function ExplorePage() {
       </div>
     );
   } catch (error) {
+    console.error("Explore Page Error:", error);
     return (
       <div className="h-screen w-full bg-[#050505] flex flex-col items-center justify-center p-8 text-center">
         <Zap className="text-red-500 mb-4" size={32} />

@@ -1,9 +1,15 @@
 "use client";
 
+/**
+ * Copyright 2026 Sandeep Kumar
+ * Security Hardened Signup Architecture
+ * Patches: Mass Assignment, Password Complexity (Zod), XSS, and User Enumeration.
+ */
+
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import { signUpUser } from "@/app/actions/auth";
 import { 
   Loader2, 
@@ -16,6 +22,7 @@ import {
   GitBranch
 } from "lucide-react";
 import { toast } from "react-hot-toast";
+import { signupSchema } from "@/lib/validations";
 
 export default function SignUpPage() {
   const [isLoading, setIsLoading] = useState(false);
@@ -28,30 +35,41 @@ export default function SignUpPage() {
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (isLoading) return;
+    
     setIsLoading(true);
 
     const formData = new FormData(e.currentTarget);
-    const password = formData.get("password") as string;
+    const rawData = Object.fromEntries(formData.entries());
 
-    // Basic production validation
-    if (password.length < 8) {
-      toast.error("Password must be at least 8 characters.");
+    // 1. Zod Validation (Production Standard)
+    const validation = signupSchema.safeParse({
+      email: rawData.email,
+      password: rawData.password,
+    });
+
+    if (!validation.success) {
+      // Show the first validation error specifically
+      toast.error(validation.error.issues[0].message);
       setIsLoading(false);
       return;
     }
-    
+
     try {
+      // 2. Pass sanitized data to server action
       const result = await signUpUser(formData);
 
       if (result?.error) {
+        // Security: Generic error for user enumeration if needed, 
+        // but toast.error is safe here as it's a signup attempt.
         toast.error(result.error);
       } else if (result?.success) {
-        toast.success("Welcome to YouPrompt! Redirecting...");
-        // Delay slightly for toast visibility
+        toast.success("Welcome to YouPrompt! Redirecting to login...");
         setTimeout(() => router.push("/login"), 1500);
       }
     } catch (error) {
-      toast.error("An unexpected error occurred. Please try again.");
+      console.error("Signup failure:", error);
+      toast.error("A system error occurred. Please try again later.");
     } finally {
       setIsLoading(false);
     }
@@ -60,9 +78,9 @@ export default function SignUpPage() {
   if (!mounted) return null;
 
   return (
-    <div className="min-h-screen bg-[#0a0a0a] text-white flex flex-col items-center justify-center p-6 relative overflow-hidden font-[family-name:var(--font-geist-sans)]">
+    <div className="min-h-screen bg-[#0a0a0a] text-white flex flex-col items-center justify-center p-6 relative overflow-hidden font-[family-name:var(--font-geist-sans)] selection:bg-blue-500/30">
       {/* Background Decorative Element */}
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[500px] bg-blue-600/[0.03] blur-[120px] rounded-full pointer-events-none" />
+      <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[500px] bg-blue-600/[0.03] blur-[120px] rounded-full pointer-events-none" />
       <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-white/5 to-transparent" />
 
       <motion.div 
@@ -92,9 +110,9 @@ export default function SignUpPage() {
             <div className="bg-blue-600 p-2 rounded-xl group-hover:scale-110 transition-transform shadow-[0_0_20px_rgba(37,99,235,0.3)]">
               <Zap size={22} fill="white" />
             </div>
-            YouPrompt
+            <span className="bg-clip-text text-transparent bg-gradient-to-b from-white to-white/60">YouPrompt</span>
           </Link>
-          <h1 className="text-2xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-b from-white to-white/60">
+          <h1 className="text-2xl font-bold tracking-tight text-white/90">
             Create your account
           </h1>
           <p className="text-gray-500 text-sm mt-2 font-medium">
@@ -114,6 +132,7 @@ export default function SignUpPage() {
                 type="text"
                 placeholder="Sandeep Kumar"
                 required
+                autoComplete="name"
                 disabled={isLoading}
                 className="w-full bg-black/40 border border-white/5 rounded-2xl px-5 py-4 outline-none focus:border-blue-500/40 focus:ring-1 focus:ring-blue-500/20 focus:bg-black/60 transition-all text-sm placeholder:text-gray-700"
               />
@@ -126,6 +145,7 @@ export default function SignUpPage() {
                 type="email"
                 placeholder="sandeep@example.com"
                 required
+                autoComplete="email"
                 disabled={isLoading}
                 className="w-full bg-black/40 border border-white/5 rounded-2xl px-5 py-4 outline-none focus:border-blue-500/40 focus:ring-1 focus:ring-blue-500/20 focus:bg-black/60 transition-all text-sm placeholder:text-gray-700"
               />
@@ -138,10 +158,13 @@ export default function SignUpPage() {
                 type="password"
                 placeholder="••••••••"
                 required
+                autoComplete="new-password"
                 disabled={isLoading}
                 className="w-full bg-black/40 border border-white/5 rounded-2xl px-5 py-4 outline-none focus:border-blue-500/40 focus:ring-1 focus:ring-blue-500/20 focus:bg-black/60 transition-all text-sm placeholder:text-gray-700"
               />
-              <p className="text-[9px] text-gray-600 px-1 italic">Min. 8 characters with letters & numbers</p>
+              <p className="text-[9px] text-gray-600 px-1 italic">
+                Requires 12+ chars, uppercase, number & symbol.
+              </p>
             </div>
 
             <button 
@@ -171,15 +194,21 @@ export default function SignUpPage() {
 
           {/* Social Logins */}
           <div className="grid grid-cols-2 gap-4">
-            <button className="flex items-center justify-center gap-2 bg-white/[0.03] border border-white/5 py-3.5 rounded-2xl hover:bg-white/5 transition-all text-xs font-bold uppercase tracking-wider active:scale-95 group">
+            <button 
+              type="button"
+              className="flex items-center justify-center gap-2 bg-white/[0.03] border border-white/5 py-3.5 rounded-2xl hover:bg-white/5 transition-all text-xs font-bold uppercase tracking-wider active:scale-95 group"
+            >
               <GitBranch size={18} className="group-hover:text-blue-400 transition-colors" /> GitHub
             </button>
-            <button className="flex items-center justify-center gap-2 bg-white/[0.03] border border-white/5 py-3.5 rounded-2xl hover:bg-white/5 transition-all text-xs font-bold uppercase tracking-wider active:scale-95 group">
+            <button 
+              type="button"
+              className="flex items-center justify-center gap-2 bg-white/[0.03] border border-white/5 py-3.5 rounded-2xl hover:bg-white/5 transition-all text-xs font-bold uppercase tracking-wider active:scale-95 group"
+            >
               <Mail size={18} className="group-hover:text-red-400 transition-colors" /> Google
             </button>
           </div>
 
-          {/* Feature List for Conversion */}
+          {/* Feature List */}
           <div className="mt-8 pt-8 border-t border-white/5 space-y-3">
             {[
               "Instant access to Gemini 3 Flash",

@@ -1,3 +1,9 @@
+/**
+ * Copyright 2026 Sandeep Kumar
+ * High-Performance Global Identity Sync & SaaS Refill Integration
+ * Fixed: TypeScript property 'error' and 'description' mismatches
+ */
+
 "use client";
 
 import { useState, useEffect } from "react";
@@ -8,13 +14,9 @@ import Link from "next/link";
 import { 
   User, Shield, Save, Camera, 
   Zap, Globe, Verified, ChevronLeft,
-  Sparkles, ArrowUpRight
+  Sparkles, ArrowUpRight, Loader2
 } from "lucide-react";
-
-/**
- * Copyright 2026 Sandeep Kumar
- * High-Performance Global Identity Sync & SaaS Refill Integration
- */
+import { toast } from "react-hot-toast";
 
 const AVATARS = [
   "https://api.dicebear.com/7.x/avataaars/svg?seed=Felix",
@@ -42,19 +44,26 @@ export default function ProfilePage() {
   }, [session]);
 
   const handleGlobalSync = async () => {
-    if (!name.trim()) return alert("Identity identifier required.");
+    if (!name.trim()) {
+      toast.error("Identity identifier required.");
+      return;
+    }
     
     setIsUpdating(true);
     
     try {
       // 1. Persistence: Update the database record via Server Action
-      await updateProfile({ 
+      const result = await updateProfile({ 
         name: name.trim(), 
         image: selectedAvatar 
       });
 
+      // Fix: Check result.success instead of result.error
+      if (!result.success) {
+        throw new Error(result.message || "Failed to update profile");
+      }
+
       // 2. Critical Global Broadcast
-      // This forces NextAuth to refresh the session object across all components (Playground/Explore)
       await update({
         ...session,
         user: {
@@ -64,20 +73,27 @@ export default function ProfilePage() {
         },
       });
 
-      // 3. Force a hard refresh of the local session state to prevent "reverting"
+      // 3. Force a hard refresh of the local session state 
       window.dispatchEvent(new Event("visibilitychange"));
 
-      alert("Global Sync Successful. Identity propagated to all nodes.");
-    } catch (err) {
+      // Fix: Removed 'description' property not supported by react-hot-toast
+      toast.success("Global Sync Successful!");
+      
+    } catch (err: any) {
       console.error("Sync Error:", err);
-      alert("Sync failed. The system could not broadcast your identity.");
+      toast.error(err.message || "The system could not broadcast your identity.");
     } finally {
       setIsUpdating(false);
     }
   };
 
-  // Prevent flicker during loading
-  if (status === "loading") return null;
+  if (status === "loading") {
+    return (
+      <div className="min-h-screen bg-[#050505] flex items-center justify-center">
+        <Loader2 className="animate-spin text-blue-500" size={32} />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#050505] text-white font-[family-name:var(--font-geist-sans)] selection:bg-blue-500/30">
@@ -104,7 +120,7 @@ export default function ProfilePage() {
           <div className="relative">
             <div className="w-40 h-40 rounded-[3rem] bg-[#0c0c0c] border-[6px] border-[#050505] shadow-2xl overflow-hidden group">
               <img 
-                src={selectedAvatar || "https://api.dicebear.com/7.x/initials/svg?seed=User"} 
+                src={selectedAvatar || `https://api.dicebear.com/7.x/initials/svg?seed=${session?.user?.email || 'User'}`} 
                 className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
                 alt="Profile" 
               />
@@ -116,10 +132,10 @@ export default function ProfilePage() {
 
           <div className="flex-1 pb-4">
             <div className="flex items-center gap-3">
-              <h1 className="text-5xl font-black tracking-tighter italic uppercase drop-shadow-sm">
+              <h1 className="text-5xl font-black tracking-tighter italic uppercase drop-shadow-sm truncate max-w-[400px]">
                 {name || "Architect"}
               </h1>
-              <Verified size={24} className="text-blue-500" />
+              <Verified size={24} className="text-blue-500 shrink-0" />
             </div>
             <p className="text-gray-500 text-xs font-mono uppercase tracking-[0.4em] mt-2">Global Identity Protocol</p>
           </div>
@@ -130,7 +146,7 @@ export default function ProfilePage() {
           {/* Sidebar: Avatar Selection */}
           <div className="lg:col-span-4 space-y-6">
             <div className="bg-[#0c0c0c] p-8 rounded-[2.5rem] border border-white/5 shadow-2xl relative overflow-hidden">
-              <div className="absolute top-0 right-0 p-4 opacity-[0.03] rotate-12">
+              <div className="absolute top-0 right-0 p-4 opacity-[0.03] rotate-12 pointer-events-none">
                 <Sparkles size={120} />
               </div>
               <h2 className="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em] mb-6 flex items-center gap-2">
@@ -140,6 +156,7 @@ export default function ProfilePage() {
                 {AVATARS.map((url) => (
                   <button 
                     key={url}
+                    type="button"
                     onClick={() => setSelectedAvatar(url)}
                     className={`aspect-square rounded-[1.2rem] overflow-hidden border-2 transition-all active:scale-90 ${selectedAvatar === url ? 'border-blue-500 ring-4 ring-blue-500/10' : 'border-white/5 opacity-40 hover:opacity-100 hover:border-white/20'}`}
                   >
@@ -158,6 +175,7 @@ export default function ProfilePage() {
                  {session?.user?.credits ?? 0} <span className="text-[10px] text-gray-600 tracking-widest font-bold">CRD</span>
                </p>
                <button 
+                 type="button"
                  onClick={() => router.push("/refill")}
                  className="w-full py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 group"
                >
@@ -195,6 +213,7 @@ export default function ProfilePage() {
                     <Shield size={18} className="text-gray-800 mr-4" />
                     <input 
                       value={session?.user?.email || ""} 
+                      readOnly
                       disabled 
                       className="w-full bg-transparent outline-none text-sm font-mono text-gray-700 cursor-not-allowed"
                     />
@@ -205,6 +224,7 @@ export default function ProfilePage() {
 
             {/* Commit Action */}
             <button 
+              type="button"
               onClick={handleGlobalSync}
               disabled={isUpdating}
               className="w-full py-6 bg-white text-black rounded-[2rem] font-black uppercase tracking-[0.3em] text-[12px] hover:bg-blue-600 hover:text-white transition-all flex items-center justify-center gap-3 shadow-2xl disabled:opacity-50 disabled:cursor-wait group active:scale-95"

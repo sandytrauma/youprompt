@@ -1,14 +1,25 @@
+/**
+ * Copyright 2026 Sandeep Kumar
+ * YouPrompt Secure Landing Engine v1.1
+ * Features: Framer Motion 12, React 19, Hardware Accelerated Backgrounds.
+ */
+
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
-import { motion } from "framer-motion";
-import { Sparkles, ArrowRight, Code2, Zap, Layers, ChevronRight, ShieldAlert, BrainCircuit, Activity } from "lucide-react";
+import { motion, Variants } from "framer-motion";
+import { 
+  Sparkles, ArrowRight, Code2, Zap, Layers, 
+  ChevronRight, ShieldAlert, BrainCircuit, Activity,
+  X,
+  GitBranch
+} from "lucide-react";
 import DemoModal from "./components/ViewDemo";
 
 /**
  * ScrambledRain Component
- * Vertical shower with stable, non-bright colors.
+ * Optimized for React 19 with requestAnimationFrame and GPU cleanup.
  */
 function ScrambledRain() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -21,6 +32,7 @@ function ScrambledRain() {
 
     let width = (canvas.width = window.innerWidth);
     let height = (canvas.height = window.innerHeight);
+    let animationFrameId: number;
 
     const characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@#$%&*";
     const fontSize = 14;
@@ -38,6 +50,7 @@ function ScrambledRain() {
         const x = i * fontSize;
         const y = drops[i] * fontSize;
 
+        // Secure opacity calculation to prevent bright flashes
         const opacity = Math.min((y / height) * 0.3, 0.2); 
         
         ctx.fillStyle = `rgba(37, 99, 235, ${opacity})`;
@@ -48,18 +61,19 @@ function ScrambledRain() {
         }
         drops[i]++;
       }
+      animationFrameId = requestAnimationFrame(draw);
     };
 
-    const interval = setInterval(draw, 50);
+    animationFrameId = requestAnimationFrame(draw);
 
     const handleResize = () => {
       width = canvas.width = window.innerWidth;
       height = canvas.height = window.innerHeight;
     };
 
-    window.addEventListener("resize", handleResize);
+    window.addEventListener("resize", handleResize, { passive: true });
     return () => {
-      clearInterval(interval);
+      cancelAnimationFrame(animationFrameId);
       window.removeEventListener("resize", handleResize);
     };
   }, []);
@@ -67,7 +81,8 @@ function ScrambledRain() {
   return (
     <canvas
       ref={canvasRef}
-      className="fixed inset-0 pointer-events-none z-0"
+      className="fixed inset-0 pointer-events-none z-0 opacity-50"
+      aria-hidden="true"
     />
   );
 }
@@ -75,7 +90,7 @@ function ScrambledRain() {
 export default function LandingPage() {
   const [isDemoOpen, setIsDemoOpen] = useState(false);
 
-  const containerVariants = {
+  const containerVariants: Variants = {
     hidden: { opacity: 0 },
     visible: {
       opacity: 1,
@@ -83,7 +98,7 @@ export default function LandingPage() {
     }
   };
 
-  const itemVariants = {
+  const itemVariants: Variants = {
     hidden: { opacity: 0, y: 20 },
     visible: { opacity: 1, y: 0 }
   };
@@ -93,12 +108,14 @@ export default function LandingPage() {
       
       <ScrambledRain />
 
+      {/* Background Visual Effects */}
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-[1400px] h-[800px] pointer-events-none z-1">
         <div className="absolute top-[-10%] left-1/2 -translate-x-1/2 w-[300px] sm:w-[1000px] h-[300px] sm:h-[600px] bg-blue-600/10 blur-[80px] sm:blur-[120px] rounded-full" />
         <div className="absolute top-0 left-0 right-0 bottom-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 mix-blend-overlay" />
         <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:40px_40px] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)]" />
       </div>
 
+      {/* Navigation */}
       <nav className="fixed top-0 w-full p-4 md:p-6 flex justify-between items-center max-w-7xl z-50 backdrop-blur-md bg-[#0a0a0a]/50 border-b border-white/[0.05]">
         <div className="flex items-center gap-2 font-bold text-lg md:text-xl tracking-tighter">
           <div className="bg-blue-600 p-1.5 rounded-lg shadow-[0_0_15px_rgba(37,99,235,0.4)]">
@@ -110,14 +127,15 @@ export default function LandingPage() {
           <Link href="/documentation" className="hidden md:block text-sm text-gray-400 hover:text-white transition-colors">Documentation</Link>
           <Link 
             href="/login" 
-            className="text-xs md:text-sm font-medium hover:bg-white/10 transition-all bg-white/5 px-4 md:px-5 py-2 md:py-2.5 rounded-full border border-white/10"
+            className="text-xs md:text-sm font-medium hover:bg-white/10 transition-all bg-white/5 px-4 md:px-5 py-2 md:py-2.5 rounded-full border border-white/10 outline-none focus:ring-2 focus:ring-blue-500"
           >
             Sign In
           </Link>
         </div>
       </nav>
 
-      <main className="relative z-10 text-center px-4 md:px-6 pt-24 md:pt-48 pb-20 w-full">
+      {/* Hero Section */}
+      <main className="relative z-10 text-center px-4 md:px-6 pt-24 md:pt-48 pb-20 w-full max-w-7xl">
         <motion.div
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
@@ -135,7 +153,7 @@ export default function LandingPage() {
             <span className="text-blue-500">Code with vibes.</span>
           </h1>
 
-          <p className="max-w-2xl mx-auto text-gray-400 text-base md:text-xl mb-10 md:mb-12 leading-relaxed">
+          <p className="max-w-2xl mx-auto text-gray-400 text-base md:text-xl mb-10 md:mb-12 leading-relaxed font-medium">
             Stop struggling with syntax. Generate structured 7-step workflows and precise 
             AI prompts that turn your ideas into production-ready code instantly.
           </p>
@@ -148,13 +166,14 @@ export default function LandingPage() {
             </Link>
             <button 
               onClick={() => setIsDemoOpen(true)}
-              className="w-full sm:w-auto px-10 py-4 md:py-5 bg-transparent border border-white/10 hover:bg-white/5 rounded-full font-semibold transition-all flex items-center justify-center gap-2 group"
+              className="w-full sm:w-auto px-10 py-4 md:py-5 bg-transparent border border-white/10 hover:bg-white/5 rounded-full font-semibold transition-all flex items-center justify-center gap-2 group outline-none focus:ring-2 focus:ring-white/20"
             >
               View Demo <ChevronRight size={18} className="opacity-50 group-hover:opacity-100 transition-opacity" />
             </button>
           </div>
         </motion.div>
 
+        {/* Emergent Risk Engine Callout */}
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           whileInView={{ opacity: 1, scale: 1 }}
@@ -174,7 +193,7 @@ export default function LandingPage() {
                   <span className="text-red-500">Anticipate.</span>
                 </h2>
                 <p className="text-gray-400 text-sm md:text-lg mb-6 md:mb-8 leading-relaxed">
-                  Most AI tools generate code blindly. YouPrompt includes an <strong>Emergent Risk Engine</strong> that analyzes your architecture for security flaws, scalability bottlenecks, and technical debt.
+                  Most AI tools generate code blindly. YouPrompt includes an <strong>Emergent Risk Engine</strong> that analyzes your architecture for security flaws and scalability bottlenecks.
                 </p>
                 <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-3 md:gap-4">
                   {[
@@ -209,10 +228,10 @@ export default function LandingPage() {
                       />
                     </div>
                     <div className="p-2 md:p-3 bg-red-500/5 border border-red-500/20 rounded-lg">
-                      <p className="text-[9px] md:text-[11px] text-red-400 font-mono leading-tight">CRITICAL: Neon Serverless connection limit exceeded at 10k users. Consider PgBouncer.</p>
+                      <p className="text-[9px] md:text-[11px] text-red-400 font-mono leading-tight">CRITICAL: Neon Serverless connection limit exceeded. Consider PgBouncer.</p>
                     </div>
                     <div className="p-2 md:p-3 bg-blue-500/5 border border-blue-500/20 rounded-lg">
-                      <p className="text-[9px] md:text-[11px] text-blue-400 font-mono leading-tight">ADVICE: Middleware Edge-runtime detected. Use Jose instead of JsonWebToken.</p>
+                      <p className="text-[9px] md:text-[11px] text-blue-400 font-mono leading-tight">ADVICE: Use Jose for Edge-runtime JWT verification.</p>
                     </div>
                   </div>
                 </div>
@@ -222,6 +241,7 @@ export default function LandingPage() {
           </div>
         </motion.div>
 
+        {/* Feature Grid */}
         <motion.div 
           variants={containerVariants}
           initial="hidden"
@@ -250,16 +270,21 @@ export default function LandingPage() {
         </motion.div>
       </main>
 
+      {/* Footer */}
       <footer className="w-full max-w-7xl mt-auto py-8 md:py-12 px-6 border-t border-white/5 flex flex-col md:flex-row justify-between items-center gap-6 text-gray-500 text-xs md:text-sm relative z-10">
         <div className="flex items-center gap-2 font-bold text-white opacity-80">
           <Zap size={14} className="text-blue-500" /> YouPrompt
         </div>
         <div className="flex gap-6 md:gap-8">
-          <Link href="#" className="hover:text-white transition-colors">Twitter</Link>
-          <Link href="#" className="hover:text-white transition-colors">GitHub</Link>
-          <Link href="#" className="hover:text-white transition-colors">Privacy</Link>
+          <a href="https://twitter.com" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors flex items-center gap-1.5">
+            <X size={14} /> Twitter
+          </a>
+          <a href="https://github.com/sandytrauma" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors flex items-center gap-1.5">
+            <GitBranch size={14} /> GitHub
+          </a>
+          <Link href="/privacy" className="hover:text-white transition-colors">Privacy</Link>
         </div>
-        <p className="text-center md:text-right">© 2026 YouPrompt AI. All rights reserved.</p>
+        <p className="text-center md:text-right">© 2026 YouPrompt AI. Developed by Sandeep Kumar.</p>
       </footer>
 
       <DemoModal isOpen={isDemoOpen} onClose={() => setIsDemoOpen(false)} />
@@ -267,20 +292,24 @@ export default function LandingPage() {
   );
 }
 
-function FeatureCard({ icon, title, desc, variants }: { icon: React.ReactNode, title: string, desc: string, variants: any }) {
+/**
+ * FeatureCard Internal Component
+ * Hardware accelerated and accessibility optimized.
+ */
+function FeatureCard({ icon, title, desc, variants }: { icon: React.ReactNode, title: string, desc: string, variants: Variants }) {
   return (
     <motion.div 
       variants={variants}
-      className="p-6 md:p-8 rounded-[1.5rem] md:rounded-[2.5rem] bg-white/[0.03] border border-white/[0.08] text-left hover:bg-white/[0.05] hover:border-blue-500/20 transition-all group relative overflow-hidden"
+      className="p-6 md:p-8 rounded-[1.5rem] md:rounded-[2.5rem] bg-white/[0.03] border border-white/[0.08] text-left hover:bg-white/[0.05] hover:border-blue-500/20 transition-all group relative overflow-hidden will-change-transform"
     >
-      <div className="absolute top-0 right-0 p-8 opacity-[0.03] group-hover:opacity-[0.08] transition-opacity hidden sm:block">
+      <div className="absolute top-0 right-0 p-8 opacity-[0.03] group-hover:opacity-[0.08] transition-opacity hidden sm:block" aria-hidden="true">
         {icon}
       </div>
       <div className="mb-4 md:mb-6 p-3 md:p-4 bg-white/5 rounded-xl md:rounded-2xl w-fit group-hover:scale-110 group-hover:bg-blue-500/10 transition-all duration-500">
         {icon}
       </div>
       <h3 className="text-lg md:text-xl font-semibold mb-2 md:mb-3">{title}</h3>
-      <p className="text-gray-500 text-sm md:text-base leading-relaxed">{desc}</p>
+      <p className="text-gray-500 text-sm md:text-base leading-relaxed font-medium">{desc}</p>
     </motion.div>
   );
 }

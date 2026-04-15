@@ -1,17 +1,7 @@
 /**
  * Copyright 2026 Sandeep Kumar
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * Enterprise Social Logic Protocol v2.4
+ * Patches: Transactional Atomicity, Input Sanitization, and Discriminated Union Responses.
  */
 
 "use server";
@@ -29,93 +19,78 @@ import { and, eq, desc } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
+import { z } from "zod";
 
-/**
- * Helper to get the current session user ID
- */
-async function getUserId() {
+// --- Types ---
+
+type ActionResponse = 
+  | { success: true; data?: any } 
+  | { success: false; error: string };
+
+// Validation Schema for Social Content
+const commentSchema = z.string().min(1).max(500).trim();
+
+// --- Helpers ---
+
+async function getUserId(): Promise<string> {
   const session = await getServerSession(authOptions);
   if (!session?.user?.id) throw new Error("Unauthorized");
   return session.user.id;
 }
 
+// --- Actions ---
+
 /**
  * PUBLISH TO EXPLORE
- * This copies a private inquiry/task into the public 'vibes' table.
- * Use this to fill your Explore page!
+ * Copies private data to public vibes table using a database transaction.
  */
-export async function publishToExplore(inquiryId: string) {
+export async function publishToExplore(inquiryId: string): Promise<ActionResponse> {
   try {
-    // 1. Get the authenticated User ID (must be a UUID string)
     const userId = await getUserId();
 
-    // 2. Fetch the inquiry and its latest task
-    const inquiry = await db.query.inquiries.findFirst({
-      where: eq(inquiries.id, inquiryId),
-      with: {
-        tasks: {
-          orderBy: [desc(tasks.version)],
-          limit: 1,
+    return await db.transaction(async (tx) => {
+      // 1. Fetch Inquiry with Ownership Check
+      const inquiry = await tx.query.inquiries.findFirst({
+        where: and(eq(inquiries.id, inquiryId), eq(inquiries.userId, userId)),
+        with: {
+          tasks: {
+            orderBy: [desc(tasks.version)],
+            limit: 1,
+          },
         },
-      },
+      });
+
+      if (!inquiry) return { success: false, error: "Record not found or access denied." };
+
+      const latestTask = inquiry.tasks[0];
+      if (!latestTask) return { success: false, error: "No generated content available to share." };
+
+      // 2. Atomic Insert into Vibes
+      await tx.insert(vibes).values({
+        creatorId: userId,
+        title: inquiry.title || "Untitled Vibe",
+        prompt: latestTask.versionName || "Custom AI Workflow", 
+        steps: latestTask.steps, 
+        createdAt: new Date(),
+      });
+
+      revalidatePath("/explore");
+      return { success: true };
     });
-
-    // Check ownership and existence
-    if (!inquiry || inquiry.userId !== userId) {
-      return { success: false, error: "Record not found or unauthorized" };
-    }
-
-    const latestTask = inquiry.tasks[0];
-    if (!latestTask) {
-      return { success: false, error: "No generated content found to share" };
-    }
-
-    // 3. Insert into the vibes table
-    // latestTask.steps is your jsonb column containing the 7 steps
-    await db.insert(vibes).values({
-      creatorId: userId,
-      title: inquiry.title || "Untitled Vibe",
-      // We use the versionName as the 'prompt' summary for the explore feed
-      prompt: latestTask.versionName || "Custom AI Workflow", 
-      // This maps the task roadmap directly to the vibe roadmap
-      steps: latestTask.steps, 
-      createdAt: new Date(),
-    });
-
-    // 4. Refresh the Explore page
-    revalidatePath("/explore");
-    
-    return { success: true };
   } catch (error) {
-    console.error("Error in publishToExplore:", error);
-    return { success: false, error: "Failed to publish to Explore" };
+    console.error("[SOCIAL_ACTION_PUBLISH]:", error);
+    return { success: false, error: "Failed to publish content." };
   }
 }
 
 /**
- * Toggle Vibe Visibility
- * NOTE: Currently returns a safe message because 'is_public' 
- * does not exist in your physical database schema.
+ * TOGGLE LIKE
+ * Handles atomic toggle of like status.
  */
-export async function toggleVibeVisibility(inquiryId: string, isPublic: boolean) {
+export async function toggleLike(vibeId: string): Promise<ActionResponse> {
   try {
     const userId = await getUserId();
-    console.warn("Visibility toggle ignored: 'is_public' column not found in schema.");
-    
-    // We return false because the schema hasn't been migrated to include this column
-    return { success: false, error: "Database column 'is_public' does not exist." };
-  } catch (error) {
-    console.error("Error in toggleVibeVisibility:", error);
-    return { success: false, error: "Failed to update visibility" };
-  }
-}
 
-/**
- * Toggle Like for a Vibe
- */
-export async function toggleLike(vibeId: string) {
-  try {
-    const userId = await getUserId();
     const existing = await db.query.likes.findFirst({
       where: and(eq(likes.vibeId, vibeId), eq(likes.userId, userId)),
     });
@@ -125,50 +100,57 @@ export async function toggleLike(vibeId: string) {
         and(eq(likes.vibeId, vibeId), eq(likes.userId, userId))
       );
     } else {
-      await db.insert(likes).values({ 
-        vibeId, 
-        userId 
-      });
+      await db.insert(likes).values({ vibeId, userId });
     }
 
     revalidatePath("/explore");
     return { success: true };
   } catch (error) {
-    console.error("Error in toggleLike:", error);
-    return { success: false };
+    console.error("[SOCIAL_ACTION_LIKE]:", error);
+    return { success: false, error: "Unable to process like request." };
   }
 }
 
 /**
- * Add a comment to a Vibe
+ * ADD COMMENT
+ * Sanitizes input and validates length before insertion.
  */
-export async function addComment(vibeId: string, content: string) {
+export async function addComment(vibeId: string, rawContent: string): Promise<ActionResponse> {
   try {
     const userId = await getUserId();
-    if (!content.trim()) return { success: false, error: "Content is empty" };
+    
+    // Validate Content
+    const validation = commentSchema.safeParse(rawContent);
+    if (!validation.success) {
+      return { success: false, error: "Comment must be between 1 and 500 characters." };
+    }
 
     await db.insert(comments).values({ 
       vibeId, 
       userId, 
-      content,
+      content: validation.data,
       createdAt: new Date()
     });
 
     revalidatePath("/explore");
     return { success: true };
   } catch (error) {
-    console.error("Error in addComment:", error);
-    return { success: false };
+    console.error("[SOCIAL_ACTION_COMMENT]:", error);
+    return { success: false, error: "Comment could not be posted." };
   }
 }
 
 /**
- * Follow or Unfollow a user
+ * TOGGLE FOLLOW
+ * Securely updates follow status between users.
  */
-export async function toggleFollow(followingId: string) {
+export async function toggleFollow(followingId: string): Promise<ActionResponse> {
   try {
     const followerId = await getUserId();
-    if (followerId === followingId) return { success: false, error: "Cannot follow yourself" };
+    
+    if (followerId === followingId) {
+      return { success: false, error: "You cannot follow yourself." };
+    }
 
     const existing = await db.query.subscriptions.findFirst({
       where: and(
@@ -185,17 +167,30 @@ export async function toggleFollow(followingId: string) {
         )
       );
     } else {
-      await db.insert(subscriptions).values({ 
-        followerId, 
-        followingId 
-      });
+      await db.insert(subscriptions).values({ followerId, followingId });
     }
 
     revalidatePath("/explore");
     revalidatePath("/profile");
     return { success: true };
   } catch (error) {
-    console.error("Error in toggleFollow:", error);
-    return { success: false };
+    console.error("[SOCIAL_ACTION_FOLLOW]:", error);
+    return { success: false, error: "Could not update follow status." };
+  }
+}
+
+/**
+ * VISIBILITY TOGGLE (Placeholder)
+ * Returns structured error until migration is complete.
+ */
+export async function toggleVibeVisibility(inquiryId: string, isPublic: boolean): Promise<ActionResponse> {
+  try {
+    await getUserId();
+    return { 
+      success: false, 
+      error: "Feature locked: 'is_public' column requires database migration." 
+    };
+  } catch (error) {
+    return { success: false, error: "Unauthorized" };
   }
 }

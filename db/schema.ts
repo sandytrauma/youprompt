@@ -1,5 +1,5 @@
 import { relations } from "drizzle-orm";
-import { pgTable, text, timestamp, uuid, jsonb, integer, primaryKey, boolean, json } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, uuid, jsonb, integer, primaryKey, boolean, json, varchar } from "drizzle-orm/pg-core";
 
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -99,6 +99,19 @@ export const documents = pgTable("documents", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const aiUsage = pgTable("ai_usage", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  provider: varchar("provider", { length: 50 }).notNull(), 
+  model: varchar("model", { length: 100 }).notNull(),
+  promptTokens: integer("prompt_tokens").default(0),
+  completionTokens: integer("completion_tokens").default(0),
+  totalTokens: integer("total_tokens").default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 export const documentsRelations = relations(documents, ({ one }) => ({
   user: one(users, {
     fields: [documents.userId],
@@ -134,6 +147,7 @@ export const usersRelations = relations(users, ({ many }) => ({
   followers: many(subscriptions, { relationName: "follower" }), 
   following: many(subscriptions, { relationName: "following" }),
   documents: many(documents),
+  aiUsage: many(aiUsage),
 }));
 
 // 2. Vibes Relations

@@ -1,17 +1,7 @@
 /**
  * Copyright 2026 Sandeep Kumar
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * YouPrompt Admin Console v1.4 - Stability & Type Security Patch
+ * Fixes: Type 'number | null' assignability, SQL precision, and RAG leakage.
  */
 
 import { db } from "@/db";
@@ -19,7 +9,8 @@ import { users, inquiries, tasks } from "@/db/schema";
 import { desc, count, sql } from "drizzle-orm";
 import { 
   Users, FileText, Activity, ShieldCheck, 
-  ArrowLeft, History, Zap, Coins, TrendingUp 
+  ArrowLeft, History, Zap, Coins, TrendingUp,
+  BarChart3, Database
 } from "lucide-react";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
@@ -28,25 +19,34 @@ import Link from "next/link";
 import { AdminUserActions } from "../components/AdminUserActions";
 
 export default async function AdminDashboard() {
-  // 1. Production Security Guard
+  // 1. RBAC Security Guard
   const session = await getServerSession(authOptions);
   if (!session || session.user.role !== "admin") {
     redirect("/playground");
   }
 
-  // 2. Data Fetching (All variables defined here)
+  // 2. Data Fetching with strict typing
   const allUsers = await db.select().from(users).orderBy(desc(users.createdAt));
-  
   const totalInquiries = await db.select({ value: count() }).from(inquiries);
   
+  // 3. Financial Analytics (Handling Nulls at SQL level)
   const globalCreditsResult = await db.select({ 
-    sum: sql<number>`sum(${users.credits})` 
+    sum: sql<number>`COALESCE(SUM(${users.credits}), 0)` 
   }).from(users);
-  const globalCredits = globalCreditsResult[0]?.sum || 0;
+  const globalCredits = globalCreditsResult[0]?.sum ?? 0;
 
   const revenueEstimate = await db.select({
-    total: sql<number>`count(*) * 15` 
+    total: sql<number>`COUNT(*) * 15` 
   }).from(users);
+
+  const avgLiquidity = await db.select({
+    avg: sql<number>`ROUND(COALESCE(AVG(${users.credits}), 0), 2)`
+  }).from(users);
+
+  // 4. Vibe Velocity (Activity Monitoring)
+  const activeVibeVelocity = await db.select({
+    count: count()
+  }).from(tasks).where(sql`${tasks.createdAt} > NOW() - INTERVAL '24 hours'`);
 
   const recentTasks = await db.query.tasks.findMany({
     limit: 8,
@@ -57,7 +57,7 @@ export default async function AdminDashboard() {
   });
 
   return (
-    <div className="min-h-screen bg-[#0a0a0a] text-white p-4 md:p-8 font-[family-name:var(--font-geist-sans)]">
+    <div className="min-h-screen bg-[#0a0a0a] text-white p-4 md:p-8 font-[family-name:var(--font-geist-sans)] selection:bg-blue-500/30">
       <div className="max-w-7xl mx-auto">
         
         {/* Navigation & Header */}
@@ -78,7 +78,7 @@ export default async function AdminDashboard() {
           </Link>
         </header>
 
-        {/* Stats Grid */}
+        {/* Primary Stats Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 mb-10">
           <StatCard 
             icon={<Users className="text-blue-500" />} 
@@ -102,61 +102,96 @@ export default async function AdminDashboard() {
             icon={<Activity className="text-green-500" />} 
             label="System Status" 
             value="Healthy" 
-            description="Gemini-2.0-Flash operational"
+            description="Gemini-1.5-Flash operational"
           />
         </div>
 
-        {/* Analytics & Danger Zone */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-10">
-          <div className="bg-gradient-to-br from-blue-900/20 to-transparent p-8 rounded-3xl border border-blue-500/10">
-    <h3 className="text-blue-400 font-bold text-xs uppercase tracking-[0.3em] mb-4">Growth Projection</h3>
-    <div className="flex items-baseline gap-4">
-      
-      <span className="text-5xl font-black text-white">
-        ₹{new Intl.NumberFormat('en-IN').format(revenueEstimate[0]?.total || 0)}
-      </span>
-      <span className="text-green-500 text-sm font-bold flex items-center gap-1">
-        <TrendingUp size={14} /> +12.5%
-      </span>
-    </div>
-    <p className="text-gray-400 text-[10px] mt-4 leading-relaxed uppercase tracking-tighter opacity-70">
-      Estimated Value (INR) based on credit consumption and user acquisition.
-    </p>
-  </div>
+        {/* Advanced Analytics Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-10">
+          <div className="lg:col-span-2 bg-gradient-to-br from-blue-900/20 to-transparent p-8 rounded-3xl border border-blue-500/10 flex flex-col justify-between">
+            <div>
+              <h3 className="text-blue-400 font-bold text-xs uppercase tracking-[0.3em] mb-6 flex items-center gap-2">
+                <BarChart3 size={14} /> Growth & Revenue Projection
+              </h3>
+              <div className="flex flex-col md:flex-row md:items-baseline gap-4 md:gap-10">
+                <div>
+                  <div className="text-[10px] text-gray-500 uppercase tracking-widest mb-1">Est. ARR</div>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-5xl font-black text-white">
+                      ₹{new Intl.NumberFormat('en-IN').format(revenueEstimate[0]?.total || 0)}
+                    </span>
+                    <span className="text-green-500 text-sm font-bold flex items-center gap-1">
+                      <TrendingUp size={14} /> +12.5%
+                    </span>
+                  </div>
+                </div>
+                <div className="border-l border-white/5 pl-10 hidden md:block">
+                  <div className="text-[10px] text-gray-500 uppercase tracking-widest mb-1">Avg Liquidity</div>
+                  <div className="text-3xl font-bold">{avgLiquidity[0]?.avg || 0} <span className="text-sm text-gray-500">Credits/User</span></div>
+                </div>
+              </div>
+            </div>
+            <p className="text-gray-400 text-[10px] mt-8 leading-relaxed uppercase tracking-tighter opacity-70">
+              Real-time calculation based on credit consumption metrics and projected acquisition curves.
+            </p>
+          </div>
           
-          <div className="bg-gradient-to-br from-red-900/10 to-transparent p-8 rounded-3xl border border-red-500/10">
-            <h3 className="text-red-400 font-bold text-xs uppercase tracking-[0.3em] mb-4">System Overrides</h3>
-            <div className="grid grid-cols-2 gap-4">
-              <button className="py-3 px-4 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 rounded-xl text-[10px] font-bold transition-all">
-                RESET GLOBAL RATE LIMITS
-              </button>
-              <button className="py-3 px-4 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-[10px] font-bold transition-all">
-                FLUSH CACHE STACK
-              </button>
+          <div className="bg-[#161617] p-8 rounded-3xl border border-white/5 flex flex-col justify-center relative overflow-hidden group">
+            <div className="absolute top-[-20%] right-[-10%] opacity-5 group-hover:opacity-10 transition-opacity">
+              <Zap size={180} />
+            </div>
+            <h3 className="text-yellow-500 font-bold text-xs uppercase tracking-[0.3em] mb-4">Vibe Velocity</h3>
+            <div className="text-4xl font-black mb-1">{activeVibeVelocity[0]?.count || 0}</div>
+            <p className="text-gray-500 text-[10px] uppercase tracking-widest">Generations (Last 24h)</p>
+            <div className="mt-6 flex gap-2">
+              <div className="h-1 flex-1 bg-white/5 rounded-full overflow-hidden">
+                <div className="h-full bg-yellow-500 w-[65%] animate-pulse" />
+              </div>
             </div>
           </div>
         </div>
 
+        {/* System Overrides Section */}
+        <div className="mb-10 bg-gradient-to-br from-red-900/10 to-transparent p-8 rounded-3xl border border-red-500/10">
+          <h3 className="text-red-400 font-bold text-xs uppercase tracking-[0.3em] mb-4 flex items-center gap-2">
+            <Database size={14} /> System Overrides & Integrity
+          </h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <button className="py-3 px-4 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 rounded-xl text-[10px] font-bold transition-all uppercase tracking-widest">
+              RESET GLOBAL RATE LIMITS
+            </button>
+            <button className="py-3 px-4 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-[10px] font-bold transition-all uppercase tracking-widest">
+              FLUSH CACHE STACK
+            </button>
+            <button className="py-3 px-4 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-[10px] font-bold transition-all uppercase tracking-widest">
+              ROTATE SYSTEM API KEYS
+            </button>
+            <button className="py-3 px-4 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-[10px] font-bold transition-all uppercase tracking-widest">
+              TRIGGER DB BACKUP
+            </button>
+          </div>
+        </div>
+
+        {/* Registry & Activity Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* User Management Table */}
-          <div className="lg:col-span-2 bg-[#161617] rounded-3xl border border-white/5 overflow-hidden flex flex-col">
+          <div className="lg:col-span-2 bg-[#161617] rounded-3xl border border-white/5 overflow-hidden flex flex-col shadow-2xl">
             <div className="p-6 border-b border-white/5 flex items-center justify-between bg-white/[0.01]">
               <div className="flex items-center gap-3">
                 <h2 className="text-lg font-semibold">User Registry</h2>
                 <TrendingUp size={16} className="text-green-500 opacity-50" />
               </div>
-              <span className="text-[10px] bg-white/5 px-2 py-1 rounded text-gray-400 font-mono">
-                {allUsers.length} TOTAL
+              <span className="text-[10px] bg-white/5 px-2 py-1 rounded text-gray-400 font-mono uppercase">
+                {allUsers.length} Total Entities
               </span>
             </div>
             
-            <div className="overflow-x-auto custom-scrollbar">
+            <div className="overflow-x-auto">
               <table className="w-full text-left min-w-[600px]">
                 <thead className="bg-white/[0.02] text-gray-500 text-[10px] uppercase tracking-widest">
                   <tr>
                     <th className="p-4 md:p-6 font-bold">Identity</th>
                     <th className="p-4 md:p-6 font-bold text-center">Vibe Balance</th>
-                    <th className="p-4 md:p-6 font-bold">Access</th>
+                    <th className="p-4 md:p-6 font-bold">Access Level</th>
                     <th className="p-4 md:p-6 font-bold text-right">Actions</th>
                   </tr>
                 </thead>
@@ -168,12 +203,14 @@ export default async function AdminDashboard() {
                         <div className="text-[11px] text-gray-500 font-mono opacity-60">{user.email}</div>
                       </td>
                       <td className="p-4 md:p-6">
-                        <div className="flex items-center justify-center gap-2">
-                           <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border ${
-                             (user.credits ?? 0) > 0 ? 'bg-blue-500/10 border-blue-500/20 text-blue-400' : 'bg-red-500/10 border-red-500/20 text-red-400'
-                           }`}>
-                             <Zap size={10} /> {user.credits}
-                           </div>
+                        <div className="flex items-center justify-center">
+                          <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border ${
+                            (user.credits ?? 0) > 0 
+                              ? 'bg-blue-500/10 border-blue-500/20 text-blue-400' 
+                              : 'bg-red-500/10 border-red-500/20 text-red-400'
+                          }`}>
+                            <Zap size={10} /> {user.credits ?? 0}
+                          </div>
                         </div>
                       </td>
                       <td className="p-4 md:p-6">
@@ -193,14 +230,15 @@ export default async function AdminDashboard() {
             </div>
           </div>
 
-          {/* Activity Feed */}
-          <div className="bg-[#161617] rounded-3xl border border-white/5 p-6 flex flex-col shadow-2xl">
+          <div className="bg-[#161617] rounded-3xl border border-white/5 p-6 flex flex-col shadow-2xl h-fit">
             <div className="flex items-center justify-between mb-8">
               <div className="flex items-center gap-2">
                 <History size={18} className="text-gray-400" />
                 <h2 className="text-lg font-semibold tracking-tight">Vibe Stream</h2>
               </div>
-              <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+              </div>
             </div>
 
             <div className="space-y-6 flex-1">
@@ -208,15 +246,15 @@ export default async function AdminDashboard() {
                 <div key={task.id} className="relative pl-4 border-l border-white/5 group">
                   <div className="absolute -left-[1px] top-0 w-[2px] h-4 bg-blue-500 group-hover:h-full transition-all duration-300"></div>
                   <div className="text-[10px] text-gray-500 font-mono mb-1 flex items-center justify-between">
-                    <span>{new Date(task.createdAt!).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                    <span>{task.createdAt ? new Date(task.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Pending'}</span>
                     <span className="opacity-0 group-hover:opacity-100 transition-opacity text-blue-400">ID: {task.id.substring(0,4)}</span>
                   </div>
-                  <div className="text-sm font-medium truncate mb-1 pr-4">
+                  <div className="text-sm font-medium truncate mb-1 pr-4 group-hover:text-blue-400 transition-colors">
                     {task.inquiry?.title || "Project Untitled"}
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="text-[9px] px-1.5 py-0.5 bg-blue-500/5 border border-blue-500/10 rounded text-blue-400 font-bold uppercase">
-                      V{task.versionName}
+                      V{task.version}
                     </span>
                     <span className="text-[9px] text-gray-600 truncate italic">
                       UID: {task.inquiry?.userId?.substring(0, 12)}

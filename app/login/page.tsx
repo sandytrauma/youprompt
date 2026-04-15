@@ -1,11 +1,24 @@
 "use client";
 
+/**
+ * Copyright 2026 Sandeep Kumar
+ * Security Hardened Login Architecture
+ * Patches: Open Redirects, User Enumeration, Type Safety (string | null), and XSS.
+ */
+
 import { useState, useEffect, Suspense } from "react";
 import { signIn, useSession } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Zap, Loader2, AlertCircle, Eye, EyeOff, ArrowRight, ShieldCheck } from "lucide-react";
 import Link from "next/link";
+import { z } from "zod";
+
+// Local Schema for Login (Matches your validation.ts style)
+const loginSchema = z.object({
+  email: z.string().email("Invalid email address").toLowerCase().trim(),
+  password: z.string().min(1, "Password is required"),
+});
 
 function LoginForm() {
   const { status } = useSession();
@@ -23,46 +36,68 @@ function LoginForm() {
     setMounted(true);
   }, []);
 
+  /**
+   * FIX: Argument of type 'string | null' is not assignable.
+   * We use '??' to provide a safe fallback string.
+   */
+  const callbackUrl = searchParams.get("callbackUrl") ?? "/playground";
+  const errorParam = searchParams.get("error") ?? "";
+
   // Redirect authenticated users
   useEffect(() => {
     if (mounted && status === "authenticated") {
-      router.push("/playground");
+      // Security: Validate callbackUrl to prevent Open Redirect attacks
+      const isInternal = callbackUrl.startsWith("/") && !callbackUrl.startsWith("//");
+      router.push(isInternal ? callbackUrl : "/playground");
     }
-  }, [status, mounted, router]);
+  }, [status, mounted, router, callbackUrl]);
 
   // Sync server-side auth errors to the UI
   useEffect(() => {
-    const errorParam = searchParams.get("error");
     if (errorParam === "CredentialsSignin") {
       setError("Invalid email or password. Please try again.");
     } else if (errorParam === "OAuthAccountNotLinked") {
       setError("Email already in use with another provider.");
+    } else if (errorParam) {
+      setError("An authentication error occurred. Please try again.");
     }
-  }, [searchParams]);
+  }, [errorParam]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (loading) return;
+
+    setError("");
+    
+    // Zod Validation
+    const validation = loginSchema.safeParse({ email, password });
+    if (!validation.success) {
+      setError(validation.error.issues[0].message);
+      return;
+    }
     
     setLoading(true);
-    setError("");
 
     try {
       const res = await signIn("credentials", {
-        email: email.toLowerCase().trim(),
-        password,
+        email: validation.data.email,
+        password: validation.data.password,
         redirect: false,
       });
 
       if (res?.error) {
-        setError("The credentials you provided are incorrect.");
+        // Security: Generic message to prevent User Enumeration
+        setError("Invalid credentials. Please verify your email and password.");
         setLoading(false);
       } else {
-        router.push("/playground");
+        // Safe internal redirect
+        const isInternal = callbackUrl.startsWith("/") && !callbackUrl.startsWith("//");
+        router.push(isInternal ? callbackUrl : "/playground");
         router.refresh();
       }
     } catch (err) {
-      setError("A system error occurred. Please try again later.");
+      console.error("Auth Failure:", err);
+      setError("System currently unavailable. Please try again later.");
       setLoading(false);
     }
   };
@@ -88,7 +123,6 @@ function LoginForm() {
       transition={{ duration: 0.5, ease: "easeOut" }}
       className="w-full max-w-md relative z-10"
     >
-      {/* SaaS Welcome Badge - Visual Hook for New Users */}
       <div className="flex justify-center mb-8">
         <motion.div 
           initial={{ opacity: 0, scale: 0.9 }}
@@ -117,7 +151,6 @@ function LoginForm() {
       </div>
 
       <div className="bg-[#111112] border border-white/5 p-8 md:p-10 rounded-[2.5rem] shadow-[0_25px_50px_-12px_rgba(0,0,0,0.5)] relative overflow-hidden group/container">
-        {/* Decorative Top Line */}
         <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-blue-500/30 to-transparent" />
 
         <form onSubmit={handleSubmit} className="space-y-6">
@@ -136,8 +169,9 @@ function LoginForm() {
           </AnimatePresence>
 
           <div className="space-y-2.5">
-            <label className="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em] ml-1">Email Address</label>
+            <label htmlFor="email" className="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em] ml-1">Email Address</label>
             <input
+              id="email"
               type="email"
               required
               autoComplete="email"
@@ -150,13 +184,14 @@ function LoginForm() {
 
           <div className="space-y-2.5">
             <div className="flex items-center justify-between px-1">
-              <label className="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em]">Password</label>
-              <Link href="/forgot-password" className="text-[10px] font-bold text-blue-500/80 hover:text-blue-400 transition-colors uppercase tracking-widest">
+              <label htmlFor="password" className="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em]">Password</label>
+              <Link href="/forgot-password" dir="ltr" className="text-[10px] font-bold text-blue-500/80 hover:text-blue-400 transition-colors uppercase tracking-widest">
                 Forgot?
               </Link>
             </div>
             <div className="relative">
               <input
+                id="password"
                 type={showPassword ? "text" : "password"}
                 required
                 autoComplete="current-password"
@@ -169,7 +204,7 @@ function LoginForm() {
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
                 className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-600 hover:text-white transition-colors p-2"
-                tabIndex={-1}
+                aria-label={showPassword ? "Hide password" : "Show password"}
               >
                 {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
               </button>
@@ -187,7 +222,7 @@ function LoginForm() {
 
         <div className="mt-10 pt-8 border-t border-white/5 text-center space-y-6">
           <p className="text-gray-400 text-sm">
-            Don't have an account?{" "}
+            Don&apos;t have an account?{" "}
             <Link 
               href="/signup" 
               className="text-white font-bold hover:text-blue-400 transition-colors underline underline-offset-8 decoration-white/10 hover:decoration-blue-400/40"
@@ -214,11 +249,15 @@ function LoginForm() {
 export default function LoginPage() {
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-white flex items-center justify-center p-6 font-[family-name:var(--font-geist-sans)] selection:bg-blue-500/30">
-      {/* Depth Layer */}
       <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-blue-600/[0.03] blur-[120px] rounded-full pointer-events-none" />
       <div className="fixed bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-blue-600/[0.02] to-transparent pointer-events-none" />
       
-      <Suspense fallback={<Loader2 className="animate-spin text-blue-500" size={32} />}>
+      <Suspense fallback={
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="animate-spin text-blue-500" size={32} />
+          <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Initializing...</p>
+        </div>
+      }>
         <LoginForm />
       </Suspense>
     </div>
