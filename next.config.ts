@@ -1,8 +1,10 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
-  serverExternalPackages: ["jsdom", "html-encoding-sniffer"],
+ 
+    serverExternalPackages: ["jsdom"],
+
+    reactStrictMode: true,
 };
 
 export default nextConfig;

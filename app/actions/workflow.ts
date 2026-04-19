@@ -193,7 +193,7 @@ export async function getPublicVibe(id: string) {
 }
 
 /**
- * 6. UPDATE VIBE VERSION (Iterations)
+ * 6. UPDATE VIBE VERSION
  */
 export async function updateVibeVersion(
   id: string, 
@@ -255,27 +255,22 @@ export async function toggleVibePublic(inquiryId: string, isPublic: boolean) {
         with: { inquiry: true }
       });
 
-      if (!latestTask || !latestTask.inquiry) {
-        return { success: false, error: "Vibe details not found." };
+      if (!latestTask || !latestTask.inquiry || latestTask.inquiry.userId !== session.user.id) {
+        return { success: false, error: "Vibe details not found or unauthorized." };
       }
 
-      if (latestTask.inquiry.userId !== session.user.id) {
-        return { success: false, error: "Unauthorized access." };
-      }
-
-      // FIX: Added 'prompt' to satisfy schema requirements
       await db.insert(vibes).values({
         id: inquiryId,
         creatorId: session.user.id,
         title: latestTask.inquiry.title || "Untitled Vibe", 
-        prompt: latestTask.inquiry.title || "", // REQUIRED FIELD FIX
+        prompt: latestTask.inquiry.title || "User Prompt", 
         steps: latestTask.steps,
       }).onConflictDoUpdate({
         target: vibes.id,
         set: { 
           steps: latestTask.steps, 
           title: latestTask.inquiry.title || "Untitled Vibe",
-          prompt: latestTask.inquiry.title || "", // UPDATING PROMPT ON CONFLICT
+          prompt: latestTask.inquiry.title || "User Prompt",
         }
       });
 
