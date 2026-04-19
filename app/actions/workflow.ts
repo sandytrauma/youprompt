@@ -9,7 +9,7 @@
 import { db } from "@/db";
 import { documents, inquiries, tasks, users, vibes } from "@/db/schema";
 import { generateVibeWorkflow } from "./ai-engine"; 
-import { authOptions } from "@/lib/auth";
+import { authOptions } from "@/lib/auth"; 
 import { getServerSession } from "next-auth";
 import { revalidatePath } from "next/cache";
 import { desc, eq, and, sql, gt } from "drizzle-orm";
@@ -160,7 +160,8 @@ export async function getVibeHistory(inquiryId: string) {
       with: { inquiry: true },
     });
 
-    if (!result || result.inquiry?.userId !== session.user.id) {
+    // GUARD: Ensure result and relational inquiry exist and match user
+    if (!result || !result.inquiry || result.inquiry.userId !== session.user.id) {
       return null;
     }
 
@@ -198,6 +199,7 @@ export async function getPublicVibe(id: string) {
     }
     return null;
   } catch (error) {
+    console.error("Error in getPublicVibe:", error);
     return null;
   }
 }
@@ -217,7 +219,7 @@ export async function updateVibeVersion(
     const context = await getRelevantContext(session.user.id);
     const aiResponse = await generateVibeWorkflow(`${context}\n\n${prompt}`);
     
-    // Sequential Credits
+    // Sequential Credits Gatekeeper
     const [updatedUser] = await db
       .update(users)
       .set({ credits: sql`${users.credits} - ${VIBE_COST}` })
@@ -261,36 +263,32 @@ export async function toggleVibePublic(inquiryId: string, isPublic: boolean) {
 
   try {
     if (isPublic) {
-      // 1. Fetch the data from your private tables
       const latestTask = await db.query.tasks.findFirst({
         where: eq(tasks.inquiryId, inquiryId),
         orderBy: [desc(tasks.version)],
         with: { inquiry: true }
       });
 
-      if (!latestTask || latestTask.inquiry?.userId !== session.user.id) {
-        return { success: false, error: "Vibe not found or unauthorized." };
+      // GUARD: Check relational inquiry existence
+      if (!latestTask || !latestTask.inquiry || latestTask.inquiry.userId !== session.user.id) {
+        return { success: false, error: "Vibe details not found or unauthorized." };
       }
 
-      // 2. Insert into 'vibes' table using the correct schema keys
       await db.insert(vibes).values({
-        id: inquiryId,             // Matches UUID/String ID
-        creatorId: session.user.id, // Fixed: This is your schema's key for the user
-        title: latestTask.inquiry.title,
-        prompt: latestTask.inquiry.title, // Assuming prompt is the original input
-        steps: latestTask.steps,    // The JSON array of steps
-        // createdAt is usually handled by defaultNow() in DB
+        id: inquiryId,
+        creatorId: session.user.id,
+        title: latestTask.inquiry.title || "Untitled Vibe", 
+        prompt: latestTask.inquiry.title || "", 
+        steps: latestTask.steps,
       }).onConflictDoUpdate({
         target: vibes.id,
         set: { 
           steps: latestTask.steps, 
-          title: latestTask.inquiry.title,
-          // Update prompt if necessary
+          title: latestTask.inquiry.title || "Untitled Vibe",
         }
       });
 
     } else {
-      // UNPUBLISHING: Remove from the public gallery
       await db.delete(vibes).where(and(
         eq(vibes.id, inquiryId),
         eq(vibes.creatorId, session.user.id)
@@ -298,6 +296,7 @@ export async function toggleVibePublic(inquiryId: string, isPublic: boolean) {
     }
 
     revalidatePath("/explore");
+    revalidatePath("/playground");
     return { success: true };
   } catch (error) {
     console.error("Toggle Public Error:", error);
