@@ -1,7 +1,6 @@
 /**
  * Copyright 2026 Sandeep Kumar
  * YouPrompt Workflow Engine v3.4 - Production Hardened
- * Fixes: Turbopack Export Stability, Neon-HTTP Sequential Flow, RAG Injection
  */
 
 "use server";
@@ -37,7 +36,6 @@ const VIBE_COST = 1;
 
 /**
  * 1. RAG: TECHNICAL CONTEXT RETRIEVAL
- * Grounding AI in your specific background (EV, Fleet, Drizzle, etc.)
  */
 export async function getRelevantContext(userId: string) {
   try {
@@ -84,7 +82,6 @@ export async function getAllUserInquiries() {
 
 /**
  * 3. CREATE NEW VIBE
- * Sequential logic ensures Neon-HTTP compatibility.
  */
 export async function createNewVibe(prompt: string): Promise<ActionResponse> {
   const session = await getServerSession(authOptions);
@@ -93,17 +90,13 @@ export async function createNewVibe(prompt: string): Promise<ActionResponse> {
   const cleanPrompt = sanitizeInput(prompt, "text");
 
   try {
-    // A. Context Augmentation
     const context = await getRelevantContext(session.user.id);
     const augmentedPrompt = context 
       ? `CONTEXT:\n${context}\n\nUSER_REQUEST:\n${cleanPrompt}` 
       : cleanPrompt;
 
-    // B. AI Generation
     const aiResponse = await generateVibeWorkflow(augmentedPrompt);
 
-    // C. Sequential DB Logic
-    // 1. Credit Gatekeeper
     const [updatedUser] = await db
       .update(users)
       .set({ credits: sql`${users.credits} - ${VIBE_COST}` })
@@ -114,13 +107,11 @@ export async function createNewVibe(prompt: string): Promise<ActionResponse> {
       return { success: false, error: "Insufficient Credits." };
     }
 
-    // 2. Insert Inquiry (Parent)
     const [newInquiry] = await db.insert(inquiries).values({
       userId: session.user.id,
       title: cleanPrompt.substring(0, 50) || "New Vibe",
     }).returning();
 
-    // 3. Insert Task (V1)
     await db.insert(tasks).values({
       inquiryId: newInquiry.id,
       versionName: "V1: Initial Synthesis",
@@ -139,7 +130,6 @@ export async function createNewVibe(prompt: string): Promise<ActionResponse> {
       newCreditBalance: updatedUser.credits ?? 0,
       version: 1
     };
-
   } catch (error: any) {
     console.error("Vibe Generation Error:", error);
     return { success: false, error: "Synthesis failed. Please try again." };
@@ -147,7 +137,7 @@ export async function createNewVibe(prompt: string): Promise<ActionResponse> {
 }
 
 /**
- * 4. FETCH VIBE HISTORY (Deep Dive)
+ * 4. FETCH VIBE HISTORY
  */
 export async function getVibeHistory(inquiryId: string) {
   const session = await getServerSession(authOptions);
@@ -160,7 +150,6 @@ export async function getVibeHistory(inquiryId: string) {
       with: { inquiry: true },
     });
 
-    // GUARD: Ensure result and relational inquiry exist and match user
     if (!result || !result.inquiry || result.inquiry.userId !== session.user.id) {
       return null;
     }
@@ -180,7 +169,6 @@ export async function getVibeHistory(inquiryId: string) {
 
 /**
  * 5. PUBLIC VIBE RETRIEVAL
- * Checks the dedicated 'vibes' table for community roadmaps.
  */
 export async function getPublicVibe(id: string) {
   try {
@@ -219,7 +207,6 @@ export async function updateVibeVersion(
     const context = await getRelevantContext(session.user.id);
     const aiResponse = await generateVibeWorkflow(`${context}\n\n${prompt}`);
     
-    // Sequential Credits Gatekeeper
     const [updatedUser] = await db
       .update(users)
       .set({ credits: sql`${users.credits} - ${VIBE_COST}` })
@@ -227,7 +214,7 @@ export async function updateVibeVersion(
       .returning({ credits: users.credits });
 
     if (!updatedUser) {
-      return { success: false, error: "Insufficient credits for an update." };
+      return { success: false, error: "Insufficient credits." };
     }
 
     const [newTask] = await db.insert(tasks).values({
@@ -255,7 +242,6 @@ export async function updateVibeVersion(
 
 /**
  * 7. TOGGLE VIBE PUBLIC STATUS
- * Mirroring strategy: Syncs data to 'vibes' table for community visibility.
  */
 export async function toggleVibePublic(inquiryId: string, isPublic: boolean) {
   const session = await getServerSession(authOptions);
@@ -269,22 +255,27 @@ export async function toggleVibePublic(inquiryId: string, isPublic: boolean) {
         with: { inquiry: true }
       });
 
-      // GUARD: Check relational inquiry existence
-      if (!latestTask || !latestTask.inquiry || latestTask.inquiry.userId !== session.user.id) {
-        return { success: false, error: "Vibe details not found or unauthorized." };
+      if (!latestTask || !latestTask.inquiry) {
+        return { success: false, error: "Vibe details not found." };
       }
 
+      if (latestTask.inquiry.userId !== session.user.id) {
+        return { success: false, error: "Unauthorized access." };
+      }
+
+      // FIX: Added 'prompt' to satisfy schema requirements
       await db.insert(vibes).values({
         id: inquiryId,
         creatorId: session.user.id,
         title: latestTask.inquiry.title || "Untitled Vibe", 
-        prompt: latestTask.inquiry.title || "", 
+        prompt: latestTask.inquiry.title || "", // REQUIRED FIELD FIX
         steps: latestTask.steps,
       }).onConflictDoUpdate({
         target: vibes.id,
         set: { 
           steps: latestTask.steps, 
           title: latestTask.inquiry.title || "Untitled Vibe",
+          prompt: latestTask.inquiry.title || "", // UPDATING PROMPT ON CONFLICT
         }
       });
 
@@ -300,6 +291,6 @@ export async function toggleVibePublic(inquiryId: string, isPublic: boolean) {
     return { success: true };
   } catch (error) {
     console.error("Toggle Public Error:", error);
-    return { success: false, error: "Failed to update sharing status." };
+    return { success: false, error: "Failed to update status." };
   }
 }
