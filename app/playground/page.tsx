@@ -328,6 +328,12 @@ function PlaygroundContent() {
               <ShieldCheck size={16} /> Admin Panel
             </Link>
           )}
+          <Link 
+    href="/refill" 
+    className="flex items-center gap-3 px-4 py-3 rounded-xl text-[10px] font-bold uppercase text-green-400 hover:bg-green-500/5 transition-all border border-transparent hover:border-green-500/20"
+  >
+    <CreditCard size={16} /> Refill Credits
+  </Link>
         </nav>
     
         {isAdmin && (
