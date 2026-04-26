@@ -50,35 +50,36 @@ export async function publishToExplore(inquiryId: string): Promise<ActionRespons
   try {
     const userId = await getUserId();
 
-    return await db.transaction(async (tx) => {
-      // 1. Fetch Inquiry with Ownership Check
-      const inquiry = await tx.query.inquiries.findFirst({
-        where: and(eq(inquiries.id, inquiryId), eq(inquiries.userId, userId)),
-        with: {
-          tasks: {
-            orderBy: [desc(tasks.version)],
-            limit: 1,
-          },
+    // ✅ Removed db.transaction()
+    // Step 1: Fetch with regular db call
+    const inquiry = await db.query.inquiries.findFirst({
+      where: and(eq(inquiries.id, inquiryId), eq(inquiries.userId, userId)),
+      with: {
+        tasks: {
+          orderBy: [desc(tasks.version)],
+          limit: 1,
         },
-      });
-
-      if (!inquiry) return { success: false, error: "Record not found or access denied." };
-
-      const latestTask = inquiry.tasks[0];
-      if (!latestTask) return { success: false, error: "No generated content available to share." };
-
-      // 2. Atomic Insert into Vibes
-      await tx.insert(vibes).values({
-        creatorId: userId,
-        title: inquiry.title || "Untitled Vibe",
-        prompt: latestTask.versionName || "Custom AI Workflow", 
-        steps: latestTask.steps, 
-        createdAt: new Date(),
-      });
-
-      revalidatePath("/explore");
-      return { success: true };
+      },
     });
+
+    if (!inquiry) return { success: false, error: "Record not found or access denied." };
+
+    const latestTask = inquiry.tasks[0];
+    if (!latestTask) return { success: false, error: "No generated content available to share." };
+
+    // Step 2: Insert with regular db call
+    await db.insert(vibes).values({
+      creatorId: userId,
+      title: inquiry.title || "Untitled Vibe",
+      prompt: latestTask.versionName || "Custom AI Workflow", 
+      steps: latestTask.steps, 
+      createdAt: new Date(),
+    });
+
+    // Step 3: Revalidate cache
+    revalidatePath("/explore");
+    
+    return { success: true };
   } catch (error) {
     console.error("[SOCIAL_ACTION_PUBLISH]:", error);
     return { success: false, error: "Failed to publish content." };
