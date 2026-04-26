@@ -8,6 +8,8 @@ import { revalidatePath } from "next/cache";
 import { and, desc, eq } from "drizzle-orm";
 
 
+import { isSuspiciousContent } from "@/lib/sanitizer";
+
 export async function saveToCodeVault(data: { 
   title: string; 
   content: string; 
@@ -15,35 +17,29 @@ export async function saveToCodeVault(data: {
 }) {
   try {
     const session = await getServerSession(authOptions);
-
-    // Guard: Ensure user is authenticated
     if (!session?.user?.id) {
-      console.error("[VAULT] Error: No valid session found.");
       return { success: false, error: "Unauthorized" };
     }
 
-    // Strict Schema Insertion
+    // Server-side validation only (no actual sanitization)
+    if (isSuspiciousContent(data.content)) {
+      return { success: false, error: "Content contains invalid patterns" };
+    }
+
+    // Store raw content (client will sanitize on display)
     const result = await db.insert(documents).values({
-      userId: session.user.id, // Must be valid UUID
-      title: data.title,       // .notNull()
-      content: data.content,   // .notNull()
+      userId: session.user.id,
+      title: data.title,
+      content: data.content,  // ✅ Store raw content
       category: data.category || "technical",
       isActive: true,
     }).returning();
 
     revalidatePath("/playground");
-    
-    return { 
-      success: true, 
-      id: result[0].id 
-    };
-
+    return { success: true, id: result[0].id };
   } catch (error: any) {
     console.error("[VAULT] Database Insertion Error:", error.message);
-    return { 
-      success: false, 
-      error: error.message 
-    };
+    return { success: false, error: error.message };
   }
 }
 

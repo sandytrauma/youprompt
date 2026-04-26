@@ -20,6 +20,8 @@ import { revalidatePath } from "next/cache";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import { z } from "zod";
+import { sanitizeInput } from "@/lib/sanitizer";
+
 
 // --- Types ---
 
@@ -115,20 +117,23 @@ export async function toggleLike(vibeId: string): Promise<ActionResponse> {
  * ADD COMMENT
  * Sanitizes input and validates length before insertion.
  */
+
 export async function addComment(vibeId: string, rawContent: string): Promise<ActionResponse> {
   try {
     const userId = await getUserId();
     
-    // Validate Content
     const validation = commentSchema.safeParse(rawContent);
     if (!validation.success) {
       return { success: false, error: "Comment must be between 1 and 500 characters." };
     }
 
+    // ❌ PROBLEM: sanitizeInput on server causes jsdom error
+    const sanitized = sanitizeInput(validation.data, "text");
+
     await db.insert(comments).values({ 
       vibeId, 
       userId, 
-      content: validation.data,
+      content: sanitized,  // ❌ Stored sanitized
       createdAt: new Date()
     });
 

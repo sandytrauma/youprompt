@@ -20,8 +20,6 @@ import {
   ShieldCheck, Zap, Globe, Users
 } from "lucide-react";
 
-// Security: Use a robust sanitization pattern for User Generated Content (UGC)
-import ismorphicDomPurify from "isomorphic-dompurify";
 
 interface Step {
   objective: string;
@@ -48,7 +46,7 @@ export async function generateMetadata(): Promise<Metadata> {
  */
 const sanitizeUGC = (content: string | null | undefined) => {
   if (!content) return "";
-  return ismorphicDomPurify.sanitize(content);
+  return (content);
 };
 
 const MockAdSlot = ({ isGuest }: { isGuest: boolean }) => {

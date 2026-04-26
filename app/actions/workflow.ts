@@ -12,7 +12,8 @@ import { authOptions } from "@/lib/auth";
 import { getServerSession } from "next-auth";
 import { revalidatePath } from "next/cache";
 import { desc, eq, and, sql, gt } from "drizzle-orm";
-import { sanitizeInput } from "@/lib/sanitizer";
+import { isSuspiciousContent } from "@/lib/sanitizer";
+
 
 // --- TYPE DEFINITIONS ---
 export type Step = {
@@ -87,13 +88,20 @@ export async function createNewVibe(prompt: string): Promise<ActionResponse> {
   const session = await getServerSession(authOptions);
   if (!session?.user?.id) return { success: false, error: "Authentication required." };
 
-  const cleanPrompt = sanitizeInput(prompt, "text");
+  // Validate input length and suspicious patterns
+  if (!prompt || prompt.length > 5000) {
+    return { success: false, error: "Prompt too long or empty" };
+  }
+
+  if (isSuspiciousContent(prompt)) {
+    return { success: false, error: "Prompt contains invalid characters" };
+  }
 
   try {
     const context = await getRelevantContext(session.user.id);
     const augmentedPrompt = context 
-      ? `CONTEXT:\n${context}\n\nUSER_REQUEST:\n${cleanPrompt}` 
-      : cleanPrompt;
+      ? `CONTEXT:\n${context}\n\nUSER_REQUEST:\n${prompt}`  // ✅ Use raw prompt
+      : prompt;
 
     const aiResponse = await generateVibeWorkflow(augmentedPrompt);
 
@@ -109,7 +117,7 @@ export async function createNewVibe(prompt: string): Promise<ActionResponse> {
 
     const [newInquiry] = await db.insert(inquiries).values({
       userId: session.user.id,
-      title: cleanPrompt.substring(0, 50) || "New Vibe",
+      title: prompt.substring(0, 50) || "New Vibe",
     }).returning();
 
     await db.insert(tasks).values({
